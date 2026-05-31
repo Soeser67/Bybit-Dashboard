@@ -27,6 +27,11 @@ const Icons = {
   shuffle:    () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>,
   eye:        () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
   plus:       () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  calendar:   () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+  help:       () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+  server:     () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>,
+  coin:       () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="9"/><path d="M9 9.5a2.5 2 0 0 1 5 0c0 1.5-2.5 1.5-2.5 3"/><line x1="12" y1="16" x2="12" y2="16"/></svg>,
+  trash:      () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
   telegram:   () => <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.01 9.477c-.148.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.07 14.63l-2.94-.918c-.638-.2-.651-.638.136-.946l11.48-4.43c.532-.194.998.13.816.912z"/></svg>,
 };
 
@@ -45,36 +50,90 @@ function StatCard({ label, value, icon: Icon, color }) {
 
 // ── Login Screen ───────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
+  const [step, setStep]         = useState("login"); // login | servers
   const [checking, setChecking] = useState(false);
-  const [err, setErr] = useState("");
+  const [err, setErr]           = useState("");
+  const [servers, setServers]   = useState([]);
 
   async function handleLogin() {
     setChecking(true);
     setErr("");
     try {
-      const res = await api("/api/status");
+      const res = await api("/api/servers");
       if (res.error) throw new Error(res.error);
-      onLogin({ name: "Owner", role: "owner" });
+      setServers(res.servers || []);
+      setStep("servers");
     } catch (e) {
       setErr("Kan geen verbinding maken met de bot API. Controleer je instellingen.");
     }
     setChecking(false);
   }
 
+  function selectServer(server) {
+    onLogin({ name: "Sushil", role: "owner", server });
+  }
+
+  if (step === "servers") {
+    return (
+      <div className="login-screen">
+        <div className="login-card login-card-wide">
+          <div className="login-logo">
+            <div className="logo-icon">B</div>
+          </div>
+          <h1>Selecteer een server</h1>
+          <p>Servers waar jij beheerder van bent</p>
+
+          <div className="server-list">
+            {servers.length === 0 && (
+              <div className="server-empty">
+                <div className="server-empty-icon">⚠️</div>
+                <div>Geen actieve server gevonden.</div>
+                <div className="server-empty-sub">Controleer of de bot in je groep zit en of GROUP_CHAT_ID correct is ingesteld in Railway.</div>
+              </div>
+            )}
+            {servers.map(s => (
+              <button
+                key={s.id}
+                className={`server-card ${s.isActive ? "" : "server-inactive"}`}
+                onClick={() => s.isActive && selectServer(s)}
+                disabled={!s.isActive}
+              >
+                <div className="server-avatar">{(s.title || "?").charAt(0).toUpperCase()}</div>
+                <div className="server-info">
+                  <div className="server-name">{s.title}</div>
+                  <div className="server-meta">
+                    {s.username && <span>@{s.username}</span>}
+                    {s.memberCount && <span>{s.memberCount} leden</span>}
+                    <span className={`server-status ${s.isActive ? "active" : "inactive"}`}>
+                      {s.isActive ? "● Bot actief" : "○ Bot niet actief"}
+                    </span>
+                  </div>
+                </div>
+                {s.isActive && <div className="server-arrow">→</div>}
+              </button>
+            ))}
+          </div>
+
+          <button className="btn-secondary" style={{marginTop:"8px"}} onClick={() => setStep("login")}>← Terug</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="login-screen">
       <div className="login-card">
         <div className="login-logo">
-          <div className="logo-icon"><Icons.telegram /></div>
+          <div className="logo-icon">B</div>
         </div>
         <h1>Bybit Community</h1>
         <p>Dashboard voor community managers</p>
         <button className="btn-primary btn-large" onClick={handleLogin} disabled={checking}>
-          {checking ? "Verbinden..." : "Inloggen als Owner"}
+          {checking ? "Verbinden..." : "Inloggen"}
         </button>
         {err && <div className="error-msg">{err}</div>}
         <div className="login-note">
-          Verbindt met je bot API via de ingestelde sleutel
+          Beheerd door Sushil 👑
         </div>
       </div>
     </div>
@@ -1056,14 +1115,399 @@ function RolesTab() {
 }
 
 // ── Main App ───────────────────────────────────────────────────────────
+// ── Content Calendar Tab ────────────────────────────────────────────────
+function CalendarTab() {
+  const [month, setMonth]       = useState(new Date().toISOString().slice(0,7));
+  const [events, setEvents]     = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [creating, setCreating] = useState(null); // date string when creating
+  const [form, setForm]         = useState({ question:"", tags:"", prizeAmount:"", prizeCurrency:"USDC", teaserMinutes:20, time:"18:00" });
+  const [winnerModal, setWinnerModal] = useState(null); // event being judged
+  const [winnerData, setWinnerData]   = useState(null);
+  const [correctTag, setCorrectTag]   = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await api(`/api/calendar?month=${month}`);
+    setEvents(r.events || []);
+    setLoading(false);
+  }, [month]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { const t = setInterval(load, 60000); return () => clearInterval(t); }, [load]);
+
+  const [y, m] = month.split("-").map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const firstDay = (new Date(y, m-1, 1).getDay() + 6) % 7; // Monday-first
+  const monthName = new Date(y, m-1).toLocaleDateString("nl-NL", { month:"long", year:"numeric" });
+
+  function eventsForDay(day) {
+    const dateStr = `${month}-${String(day).padStart(2,"0")}`;
+    return events.filter(e => e.event_date === dateStr);
+  }
+
+  function openCreate(day) {
+    const dateStr = `${month}-${String(day).padStart(2,"0")}`;
+    setForm({ question:"", tags:"", prizeAmount:"", prizeCurrency:"USDC", teaserMinutes:20, time:"18:00" });
+    setCreating(dateStr);
+  }
+
+  async function createEvent() {
+    if (!form.question.trim() || !form.tags.trim()) return;
+    const tags = form.tags.split(/[\s,]+/).filter(Boolean);
+    const scheduledTime = new Date(`${creating}T${form.time}:00`).toISOString();
+    await api("/api/calendar/create", {
+      method:"POST",
+      body: JSON.stringify({
+        eventDate: creating, question: form.question, tags,
+        prizeAmount: form.prizeAmount, prizeCurrency: form.prizeCurrency,
+        teaserMinutes: parseInt(form.teaserMinutes), scheduledTime
+      })
+    });
+    setCreating(null);
+    load();
+  }
+
+  async function deleteEvent(id) {
+    if (!confirm("Dit event verwijderen?")) return;
+    await api(`/api/calendar/${id}`, { method:"DELETE" });
+    load();
+  }
+
+  async function openWinner(ev) {
+    setWinnerModal(ev);
+    setCorrectTag("");
+    setWinnerData(null);
+  }
+
+  async function pickWinner() {
+    if (!correctTag) return;
+    const r = await api(`/api/calendar/${winnerModal.id}/pick-winner`, {
+      method:"POST", body: JSON.stringify({ correctTag })
+    });
+    setWinnerData(r);
+  }
+
+  async function confirmWinner(userId, announce) {
+    await api(`/api/calendar/${winnerModal.id}/confirm-winner`, {
+      method:"POST",
+      body: JSON.stringify({ correctTag, winnerUserId: userId, announce })
+    });
+    setWinnerModal(null);
+    setWinnerData(null);
+    load();
+  }
+
+  function changeMonth(delta) {
+    const d = new Date(y, m-1+delta, 1);
+    setMonth(d.toISOString().slice(0,7));
+  }
+
+  return (
+    <div className="tab-content">
+      <div className="section-header">
+        <h2>Content Kalender</h2>
+        <div className="cal-nav">
+          <button className="btn-icon" onClick={() => changeMonth(-1)}>←</button>
+          <span className="cal-month">{monthName}</span>
+          <button className="btn-icon" onClick={() => changeMonth(1)}>→</button>
+        </div>
+      </div>
+
+      {loading ? <div className="loading">Laden...</div> : (
+        <div className="calendar-grid">
+          {["Ma","Di","Wo","Do","Vr","Za","Zo"].map(d => (
+            <div key={d} className="cal-weekday">{d}</div>
+          ))}
+          {Array.from({length: firstDay}).map((_, i) => <div key={"e"+i} className="cal-empty" />)}
+          {Array.from({length: daysInMonth}).map((_, i) => {
+            const day = i+1;
+            const dayEvents = eventsForDay(day);
+            const today = new Date().toISOString().slice(0,10) === `${month}-${String(day).padStart(2,"0")}`;
+            return (
+              <div key={day} className={`cal-day ${today ? "today" : ""}`}>
+                <div className="cal-day-num">{day}</div>
+                <div className="cal-day-events">
+                  {dayEvents.map(ev => (
+                    <div key={ev.id} className={`cal-event ${ev.closed ? "done" : ev.question_sent ? "live" : ""}`}>
+                      <div className="cal-event-time">{ev.scheduled_time ? new Date(ev.scheduled_time).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"}) : ""}</div>
+                      <div className="cal-event-q">{ev.question}</div>
+                      {ev.prize_amount && <div className="cal-event-prize">💰 {ev.prize_amount} {ev.prize_currency}</div>}
+                      <div className="cal-event-status">
+                        {ev.closed ? `🏆 ${ev.winner_username || "Winnaar gekozen"}` :
+                         ev.question_sent ? `🔴 LIVE · ${ev.voteCount} stemmen` :
+                         ev.teaser_sent ? "⏰ Teaser verstuurd" : "📅 Gepland"}
+                      </div>
+                      <div className="cal-event-actions">
+                        {ev.question_sent && !ev.closed && (
+                          <button className="btn-xs btn-primary" onClick={() => openWinner(ev)}>Winnaar</button>
+                        )}
+                        {!ev.closed && <button className="btn-xs" onClick={() => deleteEvent(ev.id)}>✕</button>}
+                      </div>
+                    </div>
+                  ))}
+                  <button className="cal-add-btn" onClick={() => openCreate(day)}>+ Quiz</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Create event modal */}
+      {creating && (
+        <div className="modal-overlay" onClick={() => setCreating(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Quiz inplannen — {new Date(creating).toLocaleDateString("nl-NL",{day:"numeric",month:"long"})}</h3>
+              <button className="btn-icon" onClick={() => setCreating(null)}><Icons.x /></button>
+            </div>
+            <div className="form-group">
+              <label>Vraag</label>
+              <input className="input" placeholder='Bijv. "Gaat BTC boven 100k sluiten?"' value={form.question} onChange={e => setForm(p=>({...p,question:e.target.value}))} />
+            </div>
+            <div className="form-group">
+              <label>Stemopties</label>
+              <input className="input" placeholder="#ja #nee" value={form.tags} onChange={e => setForm(p=>({...p,tags:e.target.value}))} />
+            </div>
+            <div className="form-row">
+              <div className="form-group" style={{flex:1}}>
+                <label>Prijs bedrag</label>
+                <input className="input" placeholder="10" value={form.prizeAmount} onChange={e => setForm(p=>({...p,prizeAmount:e.target.value}))} />
+              </div>
+              <div className="form-group" style={{width:"100px"}}>
+                <label>Munt</label>
+                <input className="input" value={form.prizeCurrency} onChange={e => setForm(p=>({...p,prizeCurrency:e.target.value}))} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group" style={{flex:1}}>
+                <label>Tijd van de vraag</label>
+                <input className="input" type="time" value={form.time} onChange={e => setForm(p=>({...p,time:e.target.value}))} />
+              </div>
+              <div className="form-group" style={{flex:1}}>
+                <label>Teaser (min ervoor)</label>
+                <div className="number-input">
+                  {[10,15,20,30].map(n => (
+                    <button key={n} className={`number-btn ${form.teaserMinutes===n?"selected":""}`} onClick={() => setForm(p=>({...p,teaserMinutes:n}))}>{n}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="cal-preview">
+              <div className="cal-preview-label">Voorbeeld teaser:</div>
+              <div className="cal-preview-text">"⏰ Over {form.teaserMinutes} minuten komt er een vraag waarmee je {form.prizeAmount||"X"} {form.prizeCurrency} kan winnen!"</div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setCreating(null)}>Annuleer</button>
+              <button className="btn-primary" onClick={createEvent}><Icons.calendar /> Inplannen</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Winner picker modal */}
+      {winnerModal && (
+        <div className="modal-overlay" onClick={() => setWinnerModal(null)}>
+          <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Winnaar kiezen</h3>
+              <button className="btn-icon" onClick={() => setWinnerModal(null)}><Icons.x /></button>
+            </div>
+            <div className="winner-q">"{winnerModal.question}"</div>
+            {!winnerData ? (
+              <>
+                <div className="form-group">
+                  <label>Wat is het juiste antwoord?</label>
+                  <div className="tag-select">
+                    {winnerModal.tags.map(tag => (
+                      <button key={tag} className={`tag-btn ${correctTag===tag?"selected":""}`} onClick={() => setCorrectTag(tag)}>
+                        {tag.replace("#","").toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="modal-actions">
+                  <button className="btn-primary" onClick={pickWinner} disabled={!correctTag}>
+                    <Icons.shuffle /> Toon kandidaten
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="winner-result-info">
+                  {winnerData.totalCorrect} mensen hadden het juiste antwoord ({correctTag.replace("#","").toUpperCase()})
+                </div>
+                {winnerData.suggestedWinner && (
+                  <div className="suggested-winner">
+                    <div className="sw-label">🤖 Bot stelt voor:</div>
+                    <div className="sw-card">
+                      <div className="sw-name">{winnerData.suggestedWinner.username ? "@"+winnerData.suggestedWinner.username : winnerData.suggestedWinner.first_name}</div>
+                      {winnerData.suggestedWinner.uid && <div className="sw-uid">UID: {winnerData.suggestedWinner.uid}</div>}
+                      <div className="sw-actions">
+                        <button className="btn-sm btn-primary" onClick={() => confirmWinner(winnerData.suggestedWinner.user_id, true)}>
+                          ✓ Kies & kondig aan
+                        </button>
+                        <button className="btn-sm" onClick={() => confirmWinner(winnerData.suggestedWinner.user_id, false)}>
+                          Kies zonder aankondiging
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="all-candidates">
+                  <div className="ac-label">Of kies zelf uit alle {winnerData.totalCorrect} kandidaten:</div>
+                  <div className="ac-list">
+                    {winnerData.correctVoters.map((v, i) => (
+                      <div key={v.user_id} className="ac-row">
+                        <span className="ac-order">#{i+1}</span>
+                        <span className="ac-name">{v.username ? "@"+v.username : v.first_name}</span>
+                        {v.uid && <span className="ac-uid">{v.uid}</span>}
+                        <span className="ac-time">{new Date(v.voted_at).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"})}</span>
+                        <button className="btn-xs btn-primary" onClick={() => confirmWinner(v.user_id, true)}>Kies</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      <CalendarWinners />
+    </div>
+  );
+}
+
+// ── Calendar Winners overview ───────────────────────────────────────────
+function CalendarWinners() {
+  const [period, setPeriod]   = useState("week");
+  const [winners, setWinners] = useState([]);
+
+  const load = useCallback(async () => {
+    const r = await api(`/api/calendar/winners?period=${period}`);
+    setWinners(r.winners || []);
+  }, [period]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="card" style={{marginTop:"16px"}}>
+      <div className="card-header">
+        <h3>🏆 Winnaars overzicht</h3>
+        <div className="period-filter">
+          {[["day","Vandaag"],["week","Deze week"],["month","Deze maand"]].map(([k,l]) => (
+            <button key={k} className={`period-btn ${period===k?"selected":""}`} onClick={() => setPeriod(k)}>{l}</button>
+          ))}
+        </div>
+      </div>
+      {winners.length === 0 ? (
+        <div className="empty">Nog geen winnaars in deze periode</div>
+      ) : (
+        <table className="data-table">
+          <thead><tr><th>Datum</th><th>Vraag</th><th>Winnaar</th><th>Bybit UID</th><th>Prijs</th></tr></thead>
+          <tbody>
+            {winners.map(w => (
+              <tr key={w.id}>
+                <td>{new Date(w.event_date).toLocaleDateString("nl-NL",{day:"2-digit",month:"2-digit"})}</td>
+                <td className="winner-q-cell">{w.question}</td>
+                <td><strong>{w.winner_username}</strong></td>
+                <td><span className="uid-cell has-uid">{w.winner_uid || "—"}</span></td>
+                <td>{w.prize_amount ? <span className="prize-cell">💰 {w.prize_amount} {w.prize_currency}</span> : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+// ── Help Tab ────────────────────────────────────────────────────────────
+function HelpTab() {
+  const commands = [
+    { cmd:"/start", desc:"Open het admin menu (in je DM met de bot)", who:"Admin" },
+    { cmd:"/menu", desc:"Zelfde als /start — opent het admin menu", who:"Admin" },
+    { cmd:"/ping", desc:"Test of de bot actief is — antwoord komt in je DM", who:"Admin" },
+    { cmd:"/results", desc:"Bekijk de live stemresultaten van de actieve predictie", who:"Iedereen" },
+    { cmd:"/leaderboard", desc:"Top 10 meest actieve leden van deze week", who:"Iedereen" },
+    { cmd:"/photos", desc:"Top foto's van deze week op basis van reacties", who:"Iedereen" },
+    { cmd:"/mystats", desc:"Je eigen statistieken: berichten, totaal, UID", who:"Iedereen" },
+    { cmd:"/setuid", desc:"Sla je Bybit UID op, bijv: /setuid 12345678", who:"Iedereen" },
+    { cmd:"/help", desc:"Toon alle beschikbare commando's", who:"Iedereen" },
+  ];
+
+  const hashtags = [
+    { tag:"#ja #nee (of eigen tags)", desc:"Stem op de actieve predictie door de tag in een bericht te typen" },
+    { tag:"#FDB", desc:"Stuur feedback als de feedback periode open is, bijv: 'Mooie events #FDB'" },
+    { tag:"Foto + #tag", desc:"Stuur een foto met hashtag onderschrift voor de foto contest" },
+    { tag:"uid: 12345678", desc:"Je UID wordt automatisch opgeslagen als je dit ergens typt" },
+  ];
+
+  return (
+    <div className="tab-content">
+      <div className="section-header">
+        <h2>Help & Commando's</h2>
+      </div>
+
+      <div className="card help-intro">
+        <div className="help-intro-icon">👑</div>
+        <div>
+          <div className="help-intro-title">Bybit Community Bot</div>
+          <div className="help-intro-text">Dit dashboard en de bot worden beheerd door <strong>Sushil</strong>. Hieronder vind je alle commando's die werken in de Telegram groep.</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header"><h3>💬 Commando's</h3></div>
+        <table className="data-table">
+          <thead><tr><th>Commando</th><th>Wat het doet</th><th>Wie</th></tr></thead>
+          <tbody>
+            {commands.map(c => (
+              <tr key={c.cmd}>
+                <td><code className="cmd-code">{c.cmd}</code></td>
+                <td>{c.desc}</td>
+                <td><span className={`who-badge ${c.who==="Admin"?"admin":""}`}>{c.who}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card">
+        <div className="card-header"><h3>#️⃣ Hashtag functies</h3></div>
+        <table className="data-table">
+          <thead><tr><th>Hashtag</th><th>Wat het doet</th></tr></thead>
+          <tbody>
+            {hashtags.map(h => (
+              <tr key={h.tag}>
+                <td><code className="cmd-code">{h.tag}</code></td>
+                <td>{h.desc}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card help-footer">
+        <div>Gemaakt met ❤️ voor de Bybit community</div>
+        <div className="help-footer-sub">Beheerd door Sushil 👑</div>
+      </div>
+    </div>
+  );
+}
+
 const TABS = [
-  { id: "overview",     label: "Overzicht",    icon: Icons.chart      },
-  { id: "predictions",  label: "Predicties",   icon: Icons.prediction },
-  { id: "leaderboard",  label: "Activiteit",   icon: Icons.trophy     },
-  { id: "feedback",     label: "Feedback",     icon: Icons.message    },
-  { id: "users",        label: "Gebruikers",   icon: Icons.users      },
-  { id: "roles",        label: "Rechten",      icon: Icons.shield     },
-  { id: "chatlog",      label: "Chat Log",     icon: Icons.message    },
+  { id: "overview",     label: "Overzicht",      icon: Icons.chart      },
+  { id: "calendar",     label: "Content Kalender", icon: Icons.calendar },
+  { id: "predictions",  label: "Predicties",     icon: Icons.prediction },
+  { id: "leaderboard",  label: "Activiteit",     icon: Icons.trophy     },
+  { id: "feedback",     label: "Feedback",       icon: Icons.message    },
+  { id: "users",        label: "Gebruikers",     icon: Icons.users      },
+  { id: "chatlog",      label: "Chat Log",       icon: Icons.server     },
+  { id: "roles",        label: "Rechten",        icon: Icons.shield     },
+  { id: "help",         label: "Help",           icon: Icons.help       },
 ];
 
 export default function App() {
@@ -1109,8 +1553,10 @@ export default function App() {
         {activeTab === "leaderboard" && <LeaderboardTab />}
         {activeTab === "feedback"    && <FeedbackTab />}
         {activeTab === "users"       && <UsersTab />}
+        {activeTab === "calendar"    && <CalendarTab />}
         {activeTab === "roles"       && <RolesTab />}
-      {activeTab === "chatlog"     && <ChatLogTab />}
+        {activeTab === "chatlog"     && <ChatLogTab />}
+        {activeTab === "help"        && <HelpTab />}
       </main>
     </div>
   );
