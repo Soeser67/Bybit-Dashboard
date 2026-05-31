@@ -97,6 +97,12 @@ function OverviewTab() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
+  }, [load]);
+
   async function toggleFeedback() {
     await api("/api/bot/feedback-toggle", {
       method: "POST",
@@ -105,7 +111,16 @@ function OverviewTab() {
     load();
   }
 
+  function formatUptime(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h}u ${m}m`;
+    return `${m}m`;
+  }
+
   if (loading) return <div className="loading">Laden...</div>;
+
+  const g = status?.groupInfo;
 
   return (
     <div className="tab-content">
@@ -114,24 +129,95 @@ function OverviewTab() {
         <button className="btn-icon" onClick={load}><Icons.refresh /></button>
       </div>
 
+      {/* Bot & Group Status */}
+      <div className="status-bar">
+        <div className="status-item">
+          <div className={`status-dot ${status?.botOnline ? "online" : "offline"}`} />
+          <div className="status-info">
+            <div className="status-label">Bot status</div>
+            <div className="status-value">{status?.botOnline ? "Online" : "Offline"}</div>
+          </div>
+          {status?.uptime > 0 && <div className="status-extra">Uptime: {formatUptime(status.uptime)}</div>}
+        </div>
+
+        <div className="status-divider" />
+
+        <div className="status-item">
+          <div className={`status-dot ${g && !g.error ? "online" : "offline"}`} />
+          <div className="status-info">
+            <div className="status-label">Actieve groep</div>
+            <div className="status-value">{g?.title || "Niet gevonden"}</div>
+          </div>
+          {g?.username && <div className="status-extra">@{g.username}</div>}
+          {g?.memberCount && <div className="status-extra">{g.memberCount} leden</div>}
+        </div>
+
+        <div className="status-divider" />
+
+        <div className={`status-item ${status?.activeQuestion ? "status-active" : ""}`}>
+          <div className={`status-dot ${status?.activeQuestion ? "active" : "inactive"}`} />
+          <div className="status-info">
+            <div className="status-label">Predictie</div>
+            <div className="status-value">
+              {status?.activeQuestion ? `${status.totalVotesActive} stemmen` : "Geen actief"}
+            </div>
+          </div>
+          {status?.activeQuestion && <div className="status-badge-live">LIVE</div>}
+        </div>
+
+        <div className="status-divider" />
+
+        <div className={`status-item ${status?.feedbackEnabled ? "status-active" : ""}`}>
+          <div className={`status-dot ${status?.feedbackEnabled ? "active" : "inactive"}`} />
+          <div className="status-info">
+            <div className="status-label">Feedback</div>
+            <div className="status-value">
+              {status?.feedbackEnabled ? `${status.totalFeedbackWeek} deze week` : "Gesloten"}
+            </div>
+          </div>
+          {status?.feedbackEnabled && <div className="status-badge-live">OPEN</div>}
+        </div>
+      </div>
+
+      {/* Active prediction banner */}
+      {status?.activeQuestion && (
+        <div className="card active-question-banner">
+          <div className="aq-left">
+            <div className="aq-badge">🔮 ACTIEVE PREDICTIE</div>
+            <div className="aq-question">"{status.activeQuestion.question}"</div>
+            <div className="aq-tags">
+              {JSON.parse(status.activeQuestion.valid_tags || "[]").map(t => (
+                <span key={t} className="tag">{t}</span>
+              ))}
+            </div>
+          </div>
+          <div className="aq-right">
+            <div className="aq-votes">{status.totalVotesActive}</div>
+            <div className="aq-votes-label">stemmen</div>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback banner */}
+      {status?.feedbackEnabled && (
+        <div className="card feedback-banner">
+          <div className="fb-left">
+            <div className="fb-badge">💡 FEEDBACK OPEN</div>
+            <div className="fb-text">Leden kunnen feedback sturen met <code>#FDB</code></div>
+          </div>
+          <div className="fb-right">
+            <div className="fb-count">{status.totalFeedbackWeek}</div>
+            <div className="fb-label">inzendingen</div>
+          </div>
+        </div>
+      )}
+
       <div className="stats-grid">
         <StatCard label="Leden bijgehouden" value={status?.totalUsers} icon={Icons.users} color="#3b82f6" />
         <StatCard label="Berichten deze week" value={status?.weekMessages} icon={Icons.chart} color="#10b981" />
         <StatCard label="Totaal stemmen" value={status?.totalVotes} icon={Icons.prediction} color="#f59e0b" />
         <StatCard label="Feedback ontvangen" value={status?.totalFeedback} icon={Icons.message} color="#8b5cf6" />
       </div>
-
-      {status?.activeQuestion && (
-        <div className="card active-question">
-          <div className="card-label">🔮 Actieve predictie</div>
-          <div className="active-q-text">"{status.activeQuestion.question}"</div>
-          <div className="active-q-tags">
-            {JSON.parse(status.activeQuestion.valid_tags || "[]").map(t => (
-              <span key={t} className="tag">{t}</span>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="card">
         <div className="card-header">
