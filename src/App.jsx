@@ -349,14 +349,24 @@ function PredictionsTab() {
   const [announcing, setAnnouncing]   = useState(false);
   const [announceTxt, setAnnounceTxt] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async (silent=false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
     const r = await api("/api/predictions");
     setPredictions(r.predictions || []);
     setLoading(false);
+    setRefreshing(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Auto-refresh every 12 seconds to show live votes
+  useEffect(() => {
+    const t = setInterval(() => load(true), 12000);
+    return () => clearInterval(t);
+  }, [load]);
 
   async function viewVoters(q) {
     setSelected(q);
@@ -404,9 +414,15 @@ function PredictionsTab() {
     <div className="tab-content">
       <div className="section-header">
         <h2>Predicties</h2>
-        <button className="btn-primary" onClick={() => setCreating(true)}>
-          <Icons.plus /> Nieuwe predictie
-        </button>
+        <div style={{display:"flex",gap:"8px",alignItems:"center"}}>
+          <button className={`btn-icon ${refreshing ? "spinning" : ""}`} onClick={() => load(true)} title="Ververs">
+            <Icons.refresh />
+          </button>
+          <span className="live-indicator"><span className="live-dot" /> Live</span>
+          <button className="btn-primary" onClick={() => setCreating(true)}>
+            <Icons.plus /> Nieuwe predictie
+          </button>
+        </div>
       </div>
 
       {/* Create modal */}
