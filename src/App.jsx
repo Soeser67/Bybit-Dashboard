@@ -32,6 +32,7 @@ const Icons = {
   server:     () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>,
   coin:       () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="9"/><path d="M9 9.5a2.5 2 0 0 1 5 0c0 1.5-2.5 1.5-2.5 3"/><line x1="12" y1="16" x2="12" y2="16"/></svg>,
   trash:      () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
+  edit:       () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
   telegram:   () => <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.01 9.477c-.148.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.07 14.63l-2.94-.918c-.638-.2-.651-.638.136-.946l11.48-4.43c.532-.194.998.13.816.912z"/></svg>,
 };
 
@@ -121,19 +122,48 @@ function LoginScreen({ onLogin }) {
   }
 
   return (
-    <div className="login-screen">
-      <div className="login-card">
-        <div className="login-logo">
-          <div className="logo-icon">B</div>
+    <div className="bybit-login">
+      <div className="bybit-login-left">
+        <div className="bybit-brand">
+          <div className="bybit-brand-mark">B</div>
+          <span className="bybit-brand-name">BYBIT</span>
         </div>
-        <h1>Bybit Community</h1>
-        <p>Dashboard voor community managers</p>
-        <button className="btn-primary btn-large" onClick={handleLogin} disabled={checking}>
-          {checking ? "Verbinden..." : "Inloggen"}
-        </button>
-        {err && <div className="error-msg">{err}</div>}
-        <div className="login-note">
-          Beheerd door Sushil 👑
+        <div className="bybit-hero">
+          <h2>Community<br/>Management</h2>
+          <p>Beheer je predicties, giveaways en community vanaf één plek.</p>
+          <div className="bybit-hero-stats">
+            <div className="bhs-item"><div className="bhs-num">24/7</div><div className="bhs-label">Live bot</div></div>
+            <div className="bhs-item"><div className="bhs-num">⚡</div><div className="bhs-label">Realtime</div></div>
+            <div className="bhs-item"><div className="bhs-num">🏆</div><div className="bhs-label">Giveaways</div></div>
+          </div>
+        </div>
+        <div className="bybit-foot">Beheerd door Sushil 👑</div>
+      </div>
+
+      <div className="bybit-login-right">
+        <div className="bybit-login-box">
+          <h1>Welkom terug</h1>
+          <p className="bybit-sub">Log in op je community dashboard</p>
+
+          <div className="bybit-field">
+            <label>Account</label>
+            <div className="bybit-input-static">
+              <span className="bybit-crown">👑</span>
+              Owner — Sushil
+            </div>
+          </div>
+
+          <button className="bybit-login-btn" onClick={handleLogin} disabled={checking}>
+            {checking ? "Verbinden..." : "Inloggen"}
+          </button>
+
+          {err && <div className="error-msg">{err}</div>}
+
+          <div className="bybit-divider"><span>beveiligd via bot API</span></div>
+
+          <div className="bybit-login-note">
+            Het dashboard verbindt veilig met je Telegram bot.
+          </div>
         </div>
       </div>
     </div>
@@ -343,11 +373,12 @@ function PredictionsTab() {
   const [voters, setVoters]           = useState(null);
   const [loading, setLoading]         = useState(true);
   const [creating, setCreating]       = useState(false);
-  const [form, setForm]               = useState({ question: "", tags: "", scheduleAt: "" });
+  const [form, setForm]               = useState({ question: "", tags: "", scheduleAt: "", voteType: "text" });
   const [reveal, setReveal]           = useState({ show: false, qId: null, tags: [], count: 3 });
   const [revealResult, setRevealResult] = useState(null);
   const [announcing, setAnnouncing]   = useState(false);
   const [announceTxt, setAnnounceTxt] = useState("");
+  const [announceSent, setAnnounceSent] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -379,10 +410,10 @@ function PredictionsTab() {
     const tags = form.tags.split(/[\s,]+/).filter(Boolean);
     await api("/api/predictions/create", {
       method: "POST",
-      body: JSON.stringify({ question: form.question, tags, scheduleAt: form.scheduleAt || null }),
+      body: JSON.stringify({ question: form.question, tags, scheduleAt: form.scheduleAt || null, voteType: form.voteType }),
     });
     setCreating(false);
-    setForm({ question: "", tags: "", scheduleAt: "" });
+    setForm({ question: "", tags: "", scheduleAt: "", voteType: "text" });
     load();
   }
 
@@ -392,20 +423,38 @@ function PredictionsTab() {
       method: "POST",
       body: JSON.stringify({ correctTag: reveal.correctTag, winnersCount: reveal.count }),
     });
+    r.qId = reveal.qId;
     setRevealResult(r);
     setReveal(prev => ({ ...prev, show: false }));
+    setAnnounceSent(false);
+
+    // Auto-fill announcement text with winners
+    const q = predictions.find(p => p.id === reveal.qId);
+    const answer = r.correct?.replace("#","").toUpperCase();
+    let txt = `🎯 *Uitslag!*\n\nDe vraag was: "${q?.question || ""}"\nHet juiste antwoord: *${answer}*\n\n`;
+    if (r.winners?.length) {
+      txt += `🏆 *Winnaars:*\n`;
+      r.winners.forEach((w, i) => {
+        const medal = ["🥇","🥈","🥉"][i] || `${i+1}.`;
+        txt += `${medal} ${w.username ? "@"+w.username : w.first_name}\n`;
+      });
+      txt += `\nGefeliciteerd! 🎉`;
+    } else {
+      txt += `Niemand had het juiste antwoord dit keer!`;
+    }
+    setAnnounceTxt(txt);
     load();
   }
 
   async function announce() {
     if (!announceTxt.trim()) return;
     setAnnouncing(true);
-    await api("/api/predictions/" + selected?.id + "/announce", {
+    await api("/api/predictions/" + revealResult?.qId + "/announce", {
       method: "POST",
       body: JSON.stringify({ message: announceTxt }),
     });
     setAnnouncing(false);
-    setAnnounceTxt("");
+    setAnnounceSent(true);
   }
 
   if (loading) return <div className="loading">Laden...</div>;
@@ -450,6 +499,25 @@ function PredictionsTab() {
                 value={form.tags}
                 onChange={e => setForm(p => ({ ...p, tags: e.target.value }))}
               />
+            </div>
+            <div className="form-group">
+              <label>Hoe stemmen?</label>
+              <div className="votetype-toggle">
+                <button
+                  className={`votetype-btn ${form.voteType !== "buttons" ? "selected" : ""}`}
+                  onClick={() => setForm(p => ({ ...p, voteType: "text" }))}
+                >
+                  <div className="vt-title">💬 Hashtag</div>
+                  <div className="vt-desc">Leden typen #ja in een bericht</div>
+                </button>
+                <button
+                  className={`votetype-btn ${form.voteType === "buttons" ? "selected" : ""}`}
+                  onClick={() => setForm(p => ({ ...p, voteType: "buttons" }))}
+                >
+                  <div className="vt-title">🔘 Knoppen</div>
+                  <div className="vt-desc">Leden tikken op een knop</div>
+                </button>
+              </div>
             </div>
             <div className="form-group">
               <label>Inplannen (optioneel)</label>
@@ -521,11 +589,33 @@ function PredictionsTab() {
         <div className="card result-card">
           <div className="card-header">
             <h3>🏆 Resultaat</h3>
-            <button className="btn-icon" onClick={() => setRevealResult(null)}><Icons.x /></button>
+            <button className="btn-icon" onClick={() => { setRevealResult(null); setAnnounceSent(false); }}><Icons.x /></button>
           </div>
-          <div className="result-correct">Correct: <strong>{revealResult.correct?.replace("#","").toUpperCase()}</strong></div>
-          <div className="result-total">{revealResult.winners?.length} van {revealResult.total} hadden het goed</div>
+          <div className="result-correct">Juiste antwoord: <strong>{revealResult.correct?.replace("#","").toUpperCase()}</strong></div>
+          <div className="result-total">{revealResult.winners?.length} winnaars · {revealResult.total} stemmen totaal</div>
+
+          {/* Full tally */}
+          {revealResult.tally && (
+            <div className="result-tally">
+              {revealResult.tally.map(t => {
+                const pct = revealResult.total > 0 ? Math.round((t.count/revealResult.total)*100) : 0;
+                return (
+                  <div key={t.tag} className="result-tally-row">
+                    <span className="rt-tag" style={{color: t.tag===revealResult.correct?"var(--green)":"var(--text-2)"}}>
+                      {t.tag.replace("#","").toUpperCase()}{t.tag===revealResult.correct?" ✓":""}
+                    </span>
+                    <div className="rt-bar-wrap"><div className="rt-bar" style={{width:pct+"%", background:t.tag===revealResult.correct?"var(--green)":"var(--yellow)"}}/></div>
+                    <span className="rt-count">{t.count} ({pct}%)</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Winners */}
+          <div className="result-section-label">🏆 Winnaars</div>
           <div className="winners-list">
+            {revealResult.winners?.length === 0 && <div className="empty">Niemand had het juiste antwoord</div>}
             {revealResult.winners?.map((w, i) => (
               <div key={i} className="winner-row">
                 <span className="winner-rank">{["🥇","🥈","🥉"][i] || `#${i+1}`}</span>
@@ -534,19 +624,24 @@ function PredictionsTab() {
               </div>
             ))}
           </div>
-          <div className="form-group" style={{marginTop:"1rem"}}>
-            <label>Aankondiging sturen naar groep</label>
-            <textarea
-              className="input"
-              rows={4}
-              placeholder="Typ je aankondiging..."
-              value={announceTxt}
-              onChange={e => setAnnounceTxt(e.target.value)}
-            />
-            <button className="btn-primary" onClick={announce} disabled={announcing} style={{marginTop:"0.5rem"}}>
+
+          {/* Editable announcement */}
+          <div className="result-section-label">📢 Aankondiging naar de groep</div>
+          <div className="announce-hint">Dit bericht wordt naar de groep gestuurd. Pas het aan zoals je wilt:</div>
+          <textarea
+            className="input"
+            rows={6}
+            placeholder="Typ je aankondiging..."
+            value={announceTxt}
+            onChange={e => setAnnounceTxt(e.target.value)}
+          />
+          {announceSent ? (
+            <div className="announce-confirm">✅ Verstuurd naar de groep!</div>
+          ) : (
+            <button className="btn-primary" onClick={announce} disabled={announcing || !announceTxt.trim()} style={{marginTop:"0.5rem"}}>
               <Icons.send /> {announcing ? "Versturen..." : "Stuur naar groep"}
             </button>
-          </div>
+          )}
         </div>
       )}
 
@@ -1514,6 +1609,83 @@ function HelpTab() {
   );
 }
 
+// ── Templates Tab ───────────────────────────────────────────────────────
+function TemplatesTab() {
+  const [tpl, setTpl]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saved, setSaved]   = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await api("/api/templates");
+    setTpl(r);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    await api("/api/templates", { method:"POST", body: JSON.stringify(tpl) });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  if (loading || !tpl) return <div className="loading">Laden...</div>;
+
+  const fields = [
+    { key:"prediction", title:"🎯 Nieuwe predictie", desc:"Verstuurd als je een predictie post", vars:["{question}","{tags}"] },
+    { key:"feedback_open", title:"💡 Feedback geopend", desc:"Verstuurd als je een feedback sessie start", vars:["{enddate}"] },
+    { key:"feedback_close", title:"🔒 Feedback gesloten", desc:"Verstuurd als de feedback sessie sluit", vars:[] },
+    { key:"winner", title:"🏆 Winnaar (quiz)", desc:"Verstuurd bij een content kalender winnaar", vars:["{question}","{answer}","{winner}","{prize}"] },
+    { key:"teaser", title:"⏰ Teaser", desc:"Verstuurd X minuten voor een geplande quiz", vars:["{minutes}","{prize}"] },
+  ];
+
+  return (
+    <div className="tab-content">
+      <div className="section-header">
+        <h2>Berichten Aanpassen</h2>
+        <button className="btn-primary" onClick={save}>
+          {saved ? <><Icons.check /> Opgeslagen!</> : "Opslaan"}
+        </button>
+      </div>
+
+      <div className="card tpl-intro">
+        Pas hier de automatische berichten aan die de bot in de groep stuurt. Gebruik de variabelen tussen accolades — die worden automatisch ingevuld.
+      </div>
+
+      {fields.map(f => (
+        <div key={f.key} className="card">
+          <div className="tpl-header">
+            <div>
+              <div className="tpl-title">{f.title}</div>
+              <div className="tpl-desc">{f.desc}</div>
+            </div>
+          </div>
+          {f.vars.length > 0 && (
+            <div className="tpl-vars">
+              {f.vars.map(v => (
+                <button key={v} className="tpl-var" onClick={() => setTpl(p => ({...p, [f.key]: (p[f.key]||"") + " " + v}))}>
+                  {v}
+                </button>
+              ))}
+            </div>
+          )}
+          <textarea
+            className="input tpl-textarea"
+            rows={4}
+            value={tpl[f.key] || ""}
+            onChange={e => setTpl(p => ({...p, [f.key]: e.target.value}))}
+          />
+        </div>
+      ))}
+
+      <div className="card tpl-help">
+        <strong>Opmaak tips:</strong> Gebruik *tekst* voor vetgedrukt, en \\n voor een nieuwe regel. De variabelen zoals {"{question}"} worden vervangen door de echte waarde.
+      </div>
+    </div>
+  );
+}
+
 const TABS = [
   { id: "overview",     label: "Overzicht",      icon: Icons.chart      },
   { id: "calendar",     label: "Content Kalender", icon: Icons.calendar },
@@ -1522,6 +1694,7 @@ const TABS = [
   { id: "feedback",     label: "Feedback",       icon: Icons.message    },
   { id: "users",        label: "Gebruikers",     icon: Icons.users      },
   { id: "chatlog",      label: "Chat Log",       icon: Icons.server     },
+  { id: "templates",    label: "Berichten",      icon: Icons.edit       },
   { id: "roles",        label: "Rechten",        icon: Icons.shield     },
   { id: "help",         label: "Help",           icon: Icons.help       },
 ];
@@ -1572,6 +1745,7 @@ export default function App() {
         {activeTab === "calendar"    && <CalendarTab />}
         {activeTab === "roles"       && <RolesTab />}
         {activeTab === "chatlog"     && <ChatLogTab />}
+        {activeTab === "templates"   && <TemplatesTab />}
         {activeTab === "help"        && <HelpTab />}
       </main>
     </div>
