@@ -10,6 +10,55 @@ function api(path, opts = {}) {
   }).then(r => r.json());
 }
 
+// Upload a photo (with optional caption + winner tag) — sends straight to the group
+function uploadPhoto(file, caption, tagUserId) {
+  const fd = new FormData();
+  fd.append("photo", file);
+  if (caption)   fd.append("caption", caption);
+  if (tagUserId) fd.append("tagUserId", tagUserId);
+  return fetch(API_BASE + "/api/upload-photo", {
+    method: "POST",
+    headers: { "x-api-key": API_KEY }, // no Content-Type — browser sets multipart boundary
+    body: fd,
+  }).then(r => r.json());
+}
+
+// Reusable photo attach control: pick a file, preview it, clear it.
+function PhotoAttach({ photo, setPhoto }) {
+  const inputId = "photo-" + Math.random().toString(36).slice(2, 8);
+  const [preview, setPreview] = useState(null);
+
+  function onPick(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setPhoto(f);
+    const reader = new FileReader();
+    reader.onload = ev => setPreview(ev.target.result);
+    reader.readAsDataURL(f);
+  }
+  function clear() { setPhoto(null); setPreview(null); }
+
+  return (
+    <div className="photo-attach">
+      {!photo ? (
+        <label htmlFor={inputId} className="photo-attach-btn">
+          📷 Foto toevoegen
+          <input id={inputId} type="file" accept="image/*" onChange={onPick} style={{ display: "none" }} />
+        </label>
+      ) : (
+        <div className="photo-preview">
+          {preview && <img src={preview} alt="preview" />}
+          <div className="photo-preview-info">
+            <span className="photo-name">{photo.name}</span>
+            <button className="photo-remove" onClick={clear}>✕ Verwijder</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ── Icons ──────────────────────────────────────────────────────────────
 const Icons = {
   users:      () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
@@ -409,6 +458,7 @@ function PredictionsTab() {
   const [announcing, setAnnouncing]   = useState(false);
   const [announceTxt, setAnnounceTxt] = useState("");
   const [announceSent, setAnnounceSent] = useState(false);
+  const [announcePhoto, setAnnouncePhoto] = useState(null);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -480,12 +530,18 @@ function PredictionsTab() {
   }
 
   async function announce() {
-    if (!announceTxt.trim()) return;
+    if (!announceTxt.trim() && !announcePhoto) return;
     setAnnouncing(true);
-    const r = await api("/api/predictions/" + revealResult?.qId + "/announce", {
-      method: "POST",
-      body: JSON.stringify({ message: announceTxt, tagUserId: revealResult?.tagUserId || null }),
-    });
+    let r;
+    if (announcePhoto) {
+      // Send as photo with caption
+      r = await uploadPhoto(announcePhoto, announceTxt, revealResult?.tagUserId || null);
+    } else {
+      r = await api("/api/predictions/" + revealResult?.qId + "/announce", {
+        method: "POST",
+        body: JSON.stringify({ message: announceTxt, tagUserId: revealResult?.tagUserId || null }),
+      });
+    }
     setAnnouncing(false);
     setAnnounceSent(r.sent_status !== "failed");
   }
@@ -772,10 +828,11 @@ function PredictionsTab() {
             value={announceTxt}
             onChange={e => setAnnounceTxt(e.target.value)}
           />
+          <PhotoAttach photo={announcePhoto} setPhoto={setAnnouncePhoto} />
           {announceSent ? (
             <div className="announce-confirm">✅ Verstuurd naar de groep!</div>
           ) : (
-            <button className="btn-primary" onClick={announce} disabled={announcing || !announceTxt.trim()} style={{marginTop:"0.5rem"}}>
+            <button className="btn-primary" onClick={announce} disabled={announcing || (!announceTxt.trim() && !announcePhoto)} style={{marginTop:"0.5rem"}}>
               <Icons.send /> {announcing ? "Versturen..." : "Stuur naar groep"}
             </button>
           )}
@@ -1481,6 +1538,7 @@ function CalendarTab() {
   const [winnerModal, setWinnerModal] = useState(null);
   const [winnerData, setWinnerData]   = useState(null);
   const [correctTag, setCorrectTag]   = useState("");
+  const [calPhoto, setCalPhoto]       = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1531,7 +1589,12 @@ function CalendarTab() {
         postNow,
       })
     });
+    // If posting now with a photo attached, send the photo as a follow-up
+    if (postNow && calPhoto) {
+      await uploadPhoto(calPhoto, "", null);
+    }
     setForm(p => ({ ...p, question:"", tags:"", prizeAmount:"" }));
+    setCalPhoto(null);
     load();
   }
 
@@ -1700,6 +1763,9 @@ function CalendarTab() {
                   <div className="cal-preview-text">"⏰ Over {form.teaserMinutes} min een vraag — win {form.prizeAmount||"X"} {form.prizeCurrency}!"</div>
                 </div>
               )}
+
+              <PhotoAttach photo={calPhoto} setPhoto={setCalPhoto} />
+              <div className="cal-photo-hint">{calPhoto ? "Foto wordt meegestuurd bij 'Nu plaatsen'" : ""}</div>
 
               <div className="cal-create-actions">
                 <button className="btn-secondary" onClick={() => createEvent(false)} disabled={!form.question.trim() || !form.tags.trim()}>
@@ -1990,6 +2056,7 @@ function AutoMessagesTab() {
   const [editing, setEditing]   = useState(null); // {id?, title, body, tagWinner}
   const [sendStatus, setSendStatus] = useState({}); // id -> 'posted'|'failed'
   const [tagInput, setTagInput] = useState({}); // id -> userId
+  const [photoInput, setPhotoInput] = useState({}); // id -> File
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2015,8 +2082,15 @@ function AutoMessagesTab() {
 
   async function sendMsg(m) {
     const tagUserId = m.tag_winner ? (tagInput[m.id] || "").trim() : null;
-    const r = await api(`/api/automessages/${m.id}/send`, { method:"POST", body: JSON.stringify({ tagUserId }) });
+    const photo = photoInput[m.id];
+    let r;
+    if (photo) {
+      r = await uploadPhoto(photo, m.body, tagUserId);
+    } else {
+      r = await api(`/api/automessages/${m.id}/send`, { method:"POST", body: JSON.stringify({ tagUserId }) });
+    }
     setSendStatus(p => ({ ...p, [m.id]: r.sent_status || (r.success ? "posted" : "failed") }));
+    setPhotoInput(p => { const n = {...p}; delete n[m.id]; return n; });
     load();
   }
 
@@ -2074,6 +2148,7 @@ function AutoMessagesTab() {
                 </div>
               </div>
               <div className="am-body">{m.body}</div>
+              <PhotoAttach photo={photoInput[m.id] || null} setPhoto={f => setPhotoInput(p => ({ ...p, [m.id]: f }))} />
               {m.tag_winner ? (
                 <div className="am-tag-row">
                   <input
