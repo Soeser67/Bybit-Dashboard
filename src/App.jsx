@@ -55,8 +55,44 @@ function LoginScreen({ onLogin }) {
   const [checking, setChecking] = useState(false);
   const [err, setErr]           = useState("");
   const [servers, setServers]   = useState([]);
+  const BOT_USERNAME = import.meta.env.VITE_BOT_USERNAME || "";
 
-  async function handleLogin() {
+  // Load Telegram Login Widget
+  useEffect(() => {
+    if (step !== "login" || !BOT_USERNAME) return;
+    // Expose the callback Telegram will call
+    window.onTelegramAuth = async (user) => {
+      setChecking(true);
+      setErr("");
+      try {
+        const res = await api("/api/auth/telegram", { method: "POST", body: JSON.stringify(user) });
+        if (!res.ok) throw new Error(res.error || "Login mislukt");
+        // Now load servers
+        const sv = await api("/api/servers");
+        setServers(sv.servers || []);
+        window._tgUser = res.user;
+        setStep("servers");
+      } catch (e) {
+        setErr(e.message || "Telegram login mislukt.");
+      }
+      setChecking(false);
+    };
+    const container = document.getElementById("tg-login-container");
+    if (container && !container.querySelector("script")) {
+      const script = document.createElement("script");
+      script.src = "https://telegram.org/js/telegram-widget.js?22";
+      script.async = true;
+      script.setAttribute("data-telegram-login", BOT_USERNAME);
+      script.setAttribute("data-size", "large");
+      script.setAttribute("data-radius", "6");
+      script.setAttribute("data-onauth", "onTelegramAuth(user)");
+      script.setAttribute("data-request-access", "write");
+      container.appendChild(script);
+    }
+  }, [step, BOT_USERNAME]);
+
+  // Fallback login (no Telegram widget configured) — direct API key connect
+  async function handleFallbackLogin() {
     setChecking(true);
     setErr("");
     try {
@@ -71,7 +107,8 @@ function LoginScreen({ onLogin }) {
   }
 
   function selectServer(server) {
-    onLogin({ name: "Sushil", role: "owner", server });
+    const u = window._tgUser || { name: "Sushil", role: "owner" };
+    onLogin({ name: u.name || "Sushil", role: u.role || "owner", username: u.username, server });
   }
 
   if (step === "servers") {
@@ -129,7 +166,7 @@ function LoginScreen({ onLogin }) {
           <span className="bybit-brand-name">BYBIT</span>
         </div>
         <div className="bybit-hero">
-          <h2>Community<br/>Management</h2>
+          <h2>Bybit EU<br/>Telegram Bot</h2>
           <p>Beheer je predicties, giveaways en community vanaf één plek.</p>
           <div className="bybit-hero-stats">
             <div className="bhs-item"><div className="bhs-num">24/7</div><div className="bhs-label">Live bot</div></div>
@@ -143,26 +180,34 @@ function LoginScreen({ onLogin }) {
       <div className="bybit-login-right">
         <div className="bybit-login-box">
           <h1>Welkom terug</h1>
-          <p className="bybit-sub">Log in op je community dashboard</p>
+          <p className="bybit-sub">Log in met je Telegram account</p>
 
-          <div className="bybit-field">
-            <label>Account</label>
-            <div className="bybit-input-static">
-              <span className="bybit-crown">👑</span>
-              Owner — Sushil
-            </div>
-          </div>
-
-          <button className="bybit-login-btn" onClick={handleLogin} disabled={checking}>
-            {checking ? "Verbinden..." : "Inloggen"}
-          </button>
+          {BOT_USERNAME ? (
+            <>
+              <div id="tg-login-container" className="tg-login-container" />
+              {checking && <div className="tg-checking">Verifiëren...</div>}
+            </>
+          ) : (
+            <>
+              <div className="bybit-field">
+                <label>Account</label>
+                <div className="bybit-input-static">
+                  <span className="bybit-crown">👑</span>
+                  Owner — Sushil
+                </div>
+              </div>
+              <button className="bybit-login-btn" onClick={handleFallbackLogin} disabled={checking}>
+                {checking ? "Verbinden..." : "Inloggen"}
+              </button>
+              <div className="tg-hint">Stel VITE_BOT_USERNAME in voor Telegram login</div>
+            </>
+          )}
 
           {err && <div className="error-msg">{err}</div>}
 
-          <div className="bybit-divider"><span>beveiligd via bot API</span></div>
-
+          <div className="bybit-divider"><span>beveiligd via Telegram</span></div>
           <div className="bybit-login-note">
-            Het dashboard verbindt veilig met je Telegram bot.
+            Alleen beheerders kunnen inloggen op dit dashboard.
           </div>
         </div>
       </div>
@@ -688,6 +733,7 @@ function PredictionsTab() {
             <div className="pred-header">
               <div className="pred-status">
                 {q.closed === 0 ? <span className="badge badge-green">Actief</span>
+                 : q.closed === 2 ? <span className="badge badge-yellow">Gepland</span>
                  : q.correct_tag ? <span className="badge badge-blue">Onthuld</span>
                  : <span className="badge badge-gray">Gesloten</span>}
               </div>
@@ -1075,6 +1121,7 @@ function ChatLogTab() {
   const [search, setSearch]   = useState("");
   const [page, setPage]       = useState(0);
   const [loading, setLoading] = useState(true);
+  const [mode, setMode]       = useState("public");
   const limit = 50;
 
   const load = useCallback(async (p=0, q="") => {
@@ -1082,11 +1129,18 @@ function ChatLogTab() {
     const r = await api(`/api/chatlog?limit=${limit}&offset=${p*limit}${q ? "&search="+encodeURIComponent(q) : ""}`);
     setLogs(r.logs || []);
     setTotal(r.total || 0);
+    setMode(r.mode || "public");
     setPage(p);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  async function changeMode(newMode) {
+    setMode(newMode);
+    await api("/api/chatlog/mode", { method: "POST", body: JSON.stringify({ mode: newMode }) });
+    load(0, search);
+  }
 
   const typeIcon = { text: "💬", photo: "📸", sticker: "🎭", voice: "🎤" };
 
@@ -1103,6 +1157,26 @@ function ChatLogTab() {
             onChange={e => { setSearch(e.target.value); load(0, e.target.value); }}
           />
           <button className="btn-icon" onClick={() => load(page, search)}><Icons.refresh /></button>
+        </div>
+      </div>
+
+      {/* Mode toggle */}
+      <div className="card chatlog-mode-card">
+        <div className="cml-info">
+          <div className="cml-title">Wat wordt gelogd?</div>
+          <div className="cml-desc">
+            {mode === "public"
+              ? "Alle berichten in de groep worden gelogd."
+              : "Alleen berichten van leden die meedoen aan een predictie, quiz of feedback worden gelogd."}
+          </div>
+        </div>
+        <div className="chatlog-mode-toggle">
+          <button className={`cml-btn ${mode==="public"?"selected":""}`} onClick={() => changeMode("public")}>
+            🌐 Public
+          </button>
+          <button className={`cml-btn ${mode==="activity"?"selected":""}`} onClick={() => changeMode("activity")}>
+            🎯 Alleen activiteit
+          </button>
         </div>
       </div>
 
@@ -1228,12 +1302,13 @@ function RolesTab() {
 // ── Main App ───────────────────────────────────────────────────────────
 // ── Content Calendar Tab ────────────────────────────────────────────────
 function CalendarTab() {
-  const [month, setMonth]       = useState(new Date().toISOString().slice(0,7));
+  const todayStr = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD local
+  const [month, setMonth]       = useState(todayStr.slice(0,7));
   const [events, setEvents]     = useState([]);
   const [loading, setLoading]   = useState(true);
-  const [creating, setCreating] = useState(null); // date string when creating
-  const [form, setForm]         = useState({ question:"", tags:"", prizeAmount:"", prizeCurrency:"USDC", teaserMinutes:20, time:"18:00" });
-  const [winnerModal, setWinnerModal] = useState(null); // event being judged
+  const [selectedDay, setSelectedDay] = useState(null); // "YYYY-MM-DD"
+  const [form, setForm]         = useState({ type:"quiz", question:"", tags:"", prizeAmount:"", prizeCurrency:"USDC", teaserMinutes:20, time:"18:00" });
+  const [winnerModal, setWinnerModal] = useState(null);
   const [winnerData, setWinnerData]   = useState(null);
   const [correctTag, setCorrectTag]   = useState("");
 
@@ -1250,32 +1325,42 @@ function CalendarTab() {
   const [y, m] = month.split("-").map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
   const firstDay = (new Date(y, m-1, 1).getDay() + 6) % 7; // Monday-first
-  const monthName = new Date(y, m-1).toLocaleDateString("nl-NL", { month:"long", year:"numeric" });
+  const monthName = new Date(y, m-1, 1).toLocaleDateString("nl-NL", { month:"long", year:"numeric" });
 
   function eventsForDay(day) {
     const dateStr = `${month}-${String(day).padStart(2,"0")}`;
     return events.filter(e => e.event_date === dateStr);
   }
 
-  function openCreate(day) {
+  function changeMonth(delta) {
+    // Build YYYY-MM string without timezone drift
+    let ny = y, nm = m + delta;
+    if (nm < 1) { nm = 12; ny--; }
+    if (nm > 12) { nm = 1; ny++; }
+    setMonth(`${ny}-${String(nm).padStart(2,"0")}`);
+    setSelectedDay(null);
+  }
+
+  function selectDay(day) {
     const dateStr = `${month}-${String(day).padStart(2,"0")}`;
-    setForm({ question:"", tags:"", prizeAmount:"", prizeCurrency:"USDC", teaserMinutes:20, time:"18:00" });
-    setCreating(dateStr);
+    setSelectedDay(dateStr);
+    setForm({ type:"quiz", question:"", tags:"", prizeAmount:"", prizeCurrency:"USDC", teaserMinutes:20, time:"18:00" });
   }
 
   async function createEvent() {
     if (!form.question.trim() || !form.tags.trim()) return;
     const tags = form.tags.split(/[\s,]+/).filter(Boolean);
-    const scheduledTime = new Date(`${creating}T${form.time}:00`).toISOString();
+    const scheduledTime = new Date(`${selectedDay}T${form.time}:00`).toISOString();
     await api("/api/calendar/create", {
       method:"POST",
       body: JSON.stringify({
-        eventDate: creating, question: form.question, tags,
+        eventDate: selectedDay, question: form.question, tags,
         prizeAmount: form.prizeAmount, prizeCurrency: form.prizeCurrency,
-        teaserMinutes: parseInt(form.teaserMinutes), scheduledTime
+        teaserMinutes: parseInt(form.teaserMinutes), scheduledTime,
+        eventType: form.type,
       })
     });
-    setCreating(null);
+    setForm(p => ({ ...p, question:"", tags:"", prizeAmount:"" }));
     load();
   }
 
@@ -1285,34 +1370,22 @@ function CalendarTab() {
     load();
   }
 
-  async function openWinner(ev) {
-    setWinnerModal(ev);
-    setCorrectTag("");
-    setWinnerData(null);
-  }
+  function openWinner(ev) { setWinnerModal(ev); setCorrectTag(""); setWinnerData(null); }
 
   async function pickWinner() {
     if (!correctTag) return;
-    const r = await api(`/api/calendar/${winnerModal.id}/pick-winner`, {
-      method:"POST", body: JSON.stringify({ correctTag })
-    });
+    const r = await api(`/api/calendar/${winnerModal.id}/pick-winner`, { method:"POST", body: JSON.stringify({ correctTag }) });
     setWinnerData(r);
   }
 
   async function confirmWinner(userId, announce) {
     await api(`/api/calendar/${winnerModal.id}/confirm-winner`, {
-      method:"POST",
-      body: JSON.stringify({ correctTag, winnerUserId: userId, announce })
+      method:"POST", body: JSON.stringify({ correctTag, winnerUserId: userId, announce })
     });
-    setWinnerModal(null);
-    setWinnerData(null);
-    load();
+    setWinnerModal(null); setWinnerData(null); load();
   }
 
-  function changeMonth(delta) {
-    const d = new Date(y, m-1+delta, 1);
-    setMonth(d.toISOString().slice(0,7));
-  }
+  const selectedDayEvents = selectedDay ? events.filter(e => e.event_date === selectedDay) : [];
 
   return (
     <div className="tab-content">
@@ -1325,97 +1398,140 @@ function CalendarTab() {
         </div>
       </div>
 
-      {loading ? <div className="loading">Laden...</div> : (
-        <div className="calendar-grid">
-          {["Ma","Di","Wo","Do","Vr","Za","Zo"].map(d => (
-            <div key={d} className="cal-weekday">{d}</div>
-          ))}
-          {Array.from({length: firstDay}).map((_, i) => <div key={"e"+i} className="cal-empty" />)}
-          {Array.from({length: daysInMonth}).map((_, i) => {
-            const day = i+1;
-            const dayEvents = eventsForDay(day);
-            const today = new Date().toISOString().slice(0,10) === `${month}-${String(day).padStart(2,"0")}`;
-            return (
-              <div key={day} className={`cal-day ${today ? "today" : ""}`}>
-                <div className="cal-day-num">{day}</div>
-                <div className="cal-day-events">
-                  {dayEvents.map(ev => (
-                    <div key={ev.id} className={`cal-event ${ev.closed ? "done" : ev.question_sent ? "live" : ""}`}>
-                      <div className="cal-event-time">{ev.scheduled_time ? new Date(ev.scheduled_time).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"}) : ""}</div>
-                      <div className="cal-event-q">{ev.question}</div>
-                      {ev.prize_amount && <div className="cal-event-prize">💰 {ev.prize_amount} {ev.prize_currency}</div>}
-                      <div className="cal-event-status">
-                        {ev.closed ? `🏆 ${ev.winner_username || "Winnaar gekozen"}` :
-                         ev.question_sent ? `🔴 LIVE · ${ev.voteCount} stemmen` :
-                         ev.teaser_sent ? "⏰ Teaser verstuurd" : "📅 Gepland"}
-                      </div>
-                      <div className="cal-event-actions">
-                        {ev.question_sent && !ev.closed && (
-                          <button className="btn-xs btn-primary" onClick={() => openWinner(ev)}>Winnaar</button>
-                        )}
-                        {!ev.closed && <button className="btn-xs" onClick={() => deleteEvent(ev.id)}>✕</button>}
-                      </div>
+      <div className={`cal-layout ${selectedDay ? "with-panel" : ""}`}>
+        {/* Calendar grid */}
+        {loading ? <div className="loading">Laden...</div> : (
+          <div className="calendar-grid">
+            {["Ma","Di","Wo","Do","Vr","Za","Zo"].map(d => (
+              <div key={d} className="cal-weekday">{d}</div>
+            ))}
+            {Array.from({length: firstDay}).map((_, i) => <div key={"e"+i} className="cal-empty" />)}
+            {Array.from({length: daysInMonth}).map((_, i) => {
+              const day = i+1;
+              const dateStr = `${month}-${String(day).padStart(2,"0")}`;
+              const dayEvents = eventsForDay(day);
+              const today = todayStr === dateStr;
+              const isSelected = selectedDay === dateStr;
+              const hasEvents = dayEvents.length > 0;
+              return (
+                <button
+                  key={day}
+                  className={`cal-day ${today ? "today" : ""} ${isSelected ? "selected" : ""} ${hasEvents ? "has-events" : ""}`}
+                  onClick={() => selectDay(day)}
+                >
+                  <div className="cal-day-num">{day}</div>
+                  {hasEvents && (
+                    <div className="cal-day-bars">
+                      {dayEvents.slice(0,3).map(ev => (
+                        <div key={ev.id} className={`cal-bar ${ev.closed ? "done" : ev.question_sent ? "live" : "planned"}`} />
+                      ))}
+                      {dayEvents.length > 3 && <div className="cal-more">+{dayEvents.length-3}</div>}
                     </div>
-                  ))}
-                  <button className="cal-add-btn" onClick={() => openCreate(day)}>+ Quiz</button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-      {/* Create event modal */}
-      {creating && (
-        <div className="modal-overlay" onClick={() => setCreating(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Quiz inplannen — {new Date(creating).toLocaleDateString("nl-NL",{day:"numeric",month:"long"})}</h3>
-              <button className="btn-icon" onClick={() => setCreating(null)}><Icons.x /></button>
-            </div>
-            <div className="form-group">
-              <label>Vraag</label>
-              <input className="input" placeholder='Bijv. "Gaat BTC boven 100k sluiten?"' value={form.question} onChange={e => setForm(p=>({...p,question:e.target.value}))} />
-            </div>
-            <div className="form-group">
-              <label>Stemopties</label>
-              <input className="input" placeholder="#ja #nee" value={form.tags} onChange={e => setForm(p=>({...p,tags:e.target.value}))} />
-            </div>
-            <div className="form-row">
-              <div className="form-group" style={{flex:1}}>
-                <label>Prijs bedrag</label>
-                <input className="input" placeholder="10" value={form.prizeAmount} onChange={e => setForm(p=>({...p,prizeAmount:e.target.value}))} />
+        {/* Day detail panel */}
+        {selectedDay && (
+          <div className="cal-panel">
+            <div className="cal-panel-header">
+              <div>
+                <div className="cal-panel-date">{new Date(selectedDay+"T12:00:00").toLocaleDateString("nl-NL",{weekday:"long",day:"numeric",month:"long"})}</div>
+                <div className="cal-panel-sub">{selectedDayEvents.length} {selectedDayEvents.length===1?"item":"items"} gepland</div>
               </div>
-              <div className="form-group" style={{width:"100px"}}>
-                <label>Munt</label>
-                <input className="input" value={form.prizeCurrency} onChange={e => setForm(p=>({...p,prizeCurrency:e.target.value}))} />
-              </div>
+              <button className="btn-icon" onClick={() => setSelectedDay(null)}><Icons.x /></button>
             </div>
-            <div className="form-row">
-              <div className="form-group" style={{flex:1}}>
-                <label>Tijd van de vraag</label>
-                <input className="input" type="time" value={form.time} onChange={e => setForm(p=>({...p,time:e.target.value}))} />
+
+            {/* History for this day */}
+            {selectedDayEvents.length > 0 && (
+              <div className="cal-panel-history">
+                <div className="cal-panel-label">Geschiedenis</div>
+                {selectedDayEvents.map(ev => (
+                  <div key={ev.id} className={`cal-hist-item ${ev.closed ? "done" : ev.question_sent ? "live" : "planned"}`}>
+                    <div className="chi-top">
+                      <span className="chi-time">{ev.scheduled_time ? new Date(ev.scheduled_time).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"}) : ""}</span>
+                      <span className="chi-type">{ev.event_type === "prediction" ? "📊 Predictie" : "🎯 Quiz"}</span>
+                      <span className={`chi-status ${ev.closed?"done":ev.question_sent?"live":"planned"}`}>
+                        {ev.closed ? "Afgerond" : ev.question_sent ? "LIVE" : ev.teaser_sent ? "Teaser" : "Gepland"}
+                      </span>
+                    </div>
+                    <div className="chi-q">{ev.question}</div>
+                    <div className="chi-meta">
+                      {ev.prize_amount && <span className="chi-prize">💰 {ev.prize_amount} {ev.prize_currency}</span>}
+                      {ev.question_sent && !ev.closed && <span>{ev.voteCount} stemmen</span>}
+                      {ev.closed && ev.winner_username && <span className="chi-winner">🏆 {ev.winner_username}{ev.winner_uid?` (${ev.winner_uid})`:""}</span>}
+                    </div>
+                    <div className="chi-actions">
+                      {ev.question_sent && !ev.closed && <button className="btn-xs btn-primary" onClick={() => openWinner(ev)}>Winnaar kiezen</button>}
+                      {!ev.closed && <button className="btn-xs" onClick={() => deleteEvent(ev.id)}>Verwijder</button>}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="form-group" style={{flex:1}}>
-                <label>Teaser (min ervoor)</label>
-                <div className="number-input">
-                  {[10,15,20,30].map(n => (
-                    <button key={n} className={`number-btn ${form.teaserMinutes===n?"selected":""}`} onClick={() => setForm(p=>({...p,teaserMinutes:n}))}>{n}</button>
-                  ))}
+            )}
+
+            {/* Create form */}
+            <div className="cal-panel-create">
+              <div className="cal-panel-label">Nieuw aanmaken</div>
+              <div className="cal-type-toggle">
+                <button className={`ctt-btn ${form.type==="quiz"?"selected":""}`} onClick={() => setForm(p=>({...p,type:"quiz"}))}>🎯 Quiz (met prijs)</button>
+                <button className={`ctt-btn ${form.type==="prediction"?"selected":""}`} onClick={() => setForm(p=>({...p,type:"prediction"}))}>📊 Predictie</button>
+              </div>
+
+              <div className="form-group">
+                <label>Vraag</label>
+                <input className="input" placeholder='Bijv. "Gaat BTC boven 100k?"' value={form.question} onChange={e => setForm(p=>({...p,question:e.target.value}))} />
+              </div>
+              <div className="form-group">
+                <label>Stemopties</label>
+                <input className="input" placeholder="#ja #nee" value={form.tags} onChange={e => setForm(p=>({...p,tags:e.target.value}))} />
+              </div>
+
+              {form.type === "quiz" && (
+                <div className="form-row">
+                  <div className="form-group" style={{flex:1}}>
+                    <label>Prijs</label>
+                    <input className="input" placeholder="10" value={form.prizeAmount} onChange={e => setForm(p=>({...p,prizeAmount:e.target.value}))} />
+                  </div>
+                  <div className="form-group" style={{width:"90px"}}>
+                    <label>Munt</label>
+                    <input className="input" value={form.prizeCurrency} onChange={e => setForm(p=>({...p,prizeCurrency:e.target.value}))} />
+                  </div>
+                </div>
+              )}
+
+              <div className="form-row">
+                <div className="form-group" style={{flex:1}}>
+                  <label>Tijd</label>
+                  <input className="input" type="time" value={form.time} onChange={e => setForm(p=>({...p,time:e.target.value}))} />
+                </div>
+                <div className="form-group" style={{flex:1}}>
+                  <label>Teaser (min)</label>
+                  <div className="number-input">
+                    {[0,10,20,30].map(n => (
+                      <button key={n} className={`number-btn ${form.teaserMinutes===n?"selected":""}`} onClick={() => setForm(p=>({...p,teaserMinutes:n}))}>{n||"−"}</button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="cal-preview">
-              <div className="cal-preview-label">Voorbeeld teaser:</div>
-              <div className="cal-preview-text">"⏰ Over {form.teaserMinutes} minuten komt er een vraag waarmee je {form.prizeAmount||"X"} {form.prizeCurrency} kan winnen!"</div>
-            </div>
-            <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setCreating(null)}>Annuleer</button>
-              <button className="btn-primary" onClick={createEvent}><Icons.calendar /> Inplannen</button>
+
+              {form.type === "quiz" && form.teaserMinutes > 0 && (
+                <div className="cal-preview">
+                  <div className="cal-preview-label">Teaser voorbeeld:</div>
+                  <div className="cal-preview-text">"⏰ Over {form.teaserMinutes} min een vraag — win {form.prizeAmount||"X"} {form.prizeCurrency}!"</div>
+                </div>
+              )}
+
+              <button className="btn-primary" style={{width:"100%"}} onClick={createEvent} disabled={!form.question.trim() || !form.tags.trim()}>
+                <Icons.calendar /> Inplannen op deze dag
+              </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Winner picker modal */}
       {winnerModal && (
