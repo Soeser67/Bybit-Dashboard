@@ -901,3 +901,94 @@ textarea.input { resize: vertical; min-height: 80px; }
   .cal-layout.with-panel .calendar-grid { max-width: 100%; }
   .cal-panel { width: 100%; }
 }
+
+/* ── Centered login with background ──────────────────────────────── */
+.bybit-login-centered {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden; padding: 20px;
+}
+.bybit-login-bg {
+  position: absolute; inset: 0;
+  background: url('/login-bg.png') center/cover no-repeat;
+  filter: brightness(0.5);
+}
+.bybit-login-bg::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(11,14,17,0.4) 0%, rgba(11,14,17,0.85) 100%);
+}
+.bybit-login-card {
+  position: relative; z-index: 1;
+  background: rgba(22,26,30,0.92); backdrop-filter: blur(12px);
+  border: 1px solid var(--border-2); border-radius: 16px;
+  padding: 40px 36px; width: 100%; max-width: 400px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5); text-align: center;
+}
+.bybit-card-brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 24px; }
+.bybit-login-card h1 { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+.bybit-card-foot { font-size: 12px; color: var(--yellow); margin-top: 18px; font-weight: 600; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); margin-bottom: 8px; cursor: pointer; }
+.checkbox-row input { width: 16px; height: 16px; accent-color: var(--yellow); }
+.field-hint { font-size: 11px; color: var(--text-3); margin-top: 5px; }
+.field-hint code { background: var(--bg-4); padding: 1px 5px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; color: var(--yellow); }
+
+/* ── Logout button ───────────────────────────────────────────────── */
+.logout-btn {
+  width: 30px; height: 30px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--border-2);
+  border-radius: var(--radius); color: var(--text-3); cursor: pointer;
+  transition: all 0.12s;
+}
+.logout-btn:hover { background: rgba(246,70,93,0.1); color: var(--red); border-color: rgba(246,70,93,0.3); }
+.logout-btn svg { width: 15px; height: 15px; }
+
+/* ── Send status dots ────────────────────────────────────────────── */
+.send-dot { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 3px; }
+.send-dot.posted { color: var(--blue); background: rgba(30,128,255,0.1); }
+.send-dot.failed { color: var(--red); background: rgba(246,70,93,0.1); }
+
+/* ── Auto messages ───────────────────────────────────────────────── */
+.am-list { display: flex; flex-direction: column; gap: 12px; }
+.am-card { }
+.am-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.am-title { font-size: 14px; font-weight: 700; }
+.am-actions { display: flex; gap: 6px; align-items: center; }
+.am-body { font-size: 13px; color: var(--text-2); white-space: pre-wrap; background: var(--bg-3); padding: 12px; border-radius: var(--radius); margin-bottom: 12px; font-family: 'JetBrains Mono', monospace; line-height: 1.5; }
+.am-send-row, .am-tag-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.am-tag-row .input { flex: 1; min-width: 180px; }
+.am-last { font-size: 11px; color: var(--text-3); }
+
+/* ── Numeric prediction display ──────────────────────────────────── */
+.numeric-info { font-size: 13px; color: var(--text-2); margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.voter-guess { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--yellow); min-width: 80px; }
+.voter-rank { font-family: 'JetBrains Mono', monospace; color: var(--text-3); width: 32px; }
+.voter-diff { font-size: 11px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; }
+.winner-guess { font-size: 12px; color: var(--text-2); font-family: 'JetBrains Mono', monospace; }
+.winner-diff { font-size: 11px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; }
+.pred-prize { font-size: 13px; color: var(--yellow); font-weight: 600; margin-bottom: 8px; }
+.badge-purple { background: rgba(168,85,247,0.12); color: var(--purple); }
+
+/* ── Calendar active glow ────────────────────────────────────────── */
+.cal-day.active-glow {
+  box-shadow: 0 0 0 1px var(--green), 0 0 16px rgba(2,192,118,0.4);
+  border-color: var(--green);
+  animation: glow-pulse 2.5s infinite;
+}
+@keyframes glow-pulse {
+  0%,100% { box-shadow: 0 0 0 1px var(--green), 0 0 12px rgba(2,192,118,0.3); }
+  50%     { box-shadow: 0 0 0 1px var(--green), 0 0 22px rgba(2,192,118,0.55); }
+}
+
+/* ── Calendar post-now / send status ─────────────────────────────── */
+.cal-create-actions { display: flex; gap: 8px; }
+.cal-create-actions .btn-primary { flex: 1; }
+.chi-send-dot { margin-left: auto; }
+
+/* ── Custom permissions ──────────────────────────────────────────── */
+.perm-grid { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.perm-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--bg-3); border-radius: var(--radius); }
+.perm-row label { flex: 1; font-size: 13px; cursor: pointer; }
+.perm-toggle { width: 16px; height: 16px; accent-color: var(--yellow); cursor: pointer; }
+.role-mode-toggle { display: flex; gap: 6px; margin-bottom: 12px; }
+.rmt-btn { flex: 1; padding: 8px; border-radius: var(--radius); font-size: 12px; font-weight: 600; background: var(--bg-3); border: 1px solid var(--border-2); color: var(--text-2); cursor: pointer; font-family: inherit; transition: all 0.12s; }
+.rmt-btn.selected { background: var(--yellow-dim); border-color: var(--yellow); color: var(--yellow); }
