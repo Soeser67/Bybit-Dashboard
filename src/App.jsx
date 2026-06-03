@@ -2214,16 +2214,22 @@ function CalendarWinnerModal({ event, winnerData, correctTag, setCorrectTag, cor
               <div className="empty">Nog geen antwoorden binnen</div>
             ) : (
               <div className="wc-list">
-                {voters.map((v, i) => (
-                  <div key={v.user_id || i} className="wc-row">
-                    <span className="wc-rank">#{i + 1}</span>
-                    {isNumeric && <span className="wc-guess">{v.guess_value}</span>}
-                    <span className="wc-name">{nameOf(v)}</span>
-                    {v.uid && <span className="wc-uid">{v.uid}</span>}
-                    <button className="btn-xs btn-primary" onClick={() => onConfirm(v.user_id, true)}>Kies & tag in groep</button>
-                    <button className="btn-xs" onClick={() => onConfirm(v.user_id, false)}>Stil kiezen</button>
-                  </div>
-                ))}
+                {voters.map((v, i) => {
+                  // Show whatever answer the user gave: a number guess, or their tag
+                  const answer = (v.guess_value != null && v.guess_value !== "")
+                    ? v.guess_value
+                    : (v.tag ? String(v.tag).replace("#","").toUpperCase() : null);
+                  return (
+                    <div key={v.user_id || i} className="wc-row">
+                      <span className="wc-rank">#{i + 1}</span>
+                      {answer != null && <span className="wc-guess">{answer}</span>}
+                      <span className="wc-name">{nameOf(v)}</span>
+                      {v.uid && <span className="wc-uid">{v.uid}</span>}
+                      <button className="btn-xs btn-primary" onClick={() => onConfirm(v.user_id, true)}>Kies & tag in groep</button>
+                      <button className="btn-xs" onClick={() => onConfirm(v.user_id, false)}>Stil kiezen</button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
