@@ -1859,7 +1859,15 @@ function CalendarTab() {
       method:"POST",
       body: JSON.stringify(isNumeric ? { correctValue } : { correctTag }),
     });
-    setWinnerData(r);
+    // Always set a safe shape so the modal can never crash on a missing field
+    setWinnerData({
+      numeric: isNumeric,
+      correctValue: r?.correctValue ?? correctValue,
+      correctVoters: Array.isArray(r?.correctVoters) ? r.correctVoters : [],
+      suggestedWinner: r?.suggestedWinner || null,
+      totalCorrect: r?.totalCorrect ?? 0,
+      error: r?.error || null,
+    });
   }
 
   async function confirmWinner(userId, announce) {
@@ -2128,7 +2136,7 @@ function CalendarTab() {
                   <div className="form-group">
                     <label>Wat is het juiste antwoord?</label>
                     <div className="tag-select">
-                      {winnerModal.tags.map(tag => (
+                      {(winnerModal.tags || []).map(tag => (
                         <button key={tag} className={`tag-btn ${correctTag===tag?"selected":""}`} onClick={() => setCorrectTag(tag)}>
                           {tag.replace("#","").toUpperCase()}
                         </button>
@@ -2170,14 +2178,17 @@ function CalendarTab() {
                   </div>
                 )}
                 <div className="all-candidates">
-                  <div className="ac-label">{isNumeric ? `Alle ${winnerData.totalCorrect} antwoorden (dichtst eerst):` : `Of kies zelf uit alle ${winnerData.totalCorrect} kandidaten:`}</div>
+                  <div className="ac-label">{isNumeric ? `Alle ${winnerData.totalCorrect || 0} antwoorden (dichtst eerst):` : `Of kies zelf uit alle ${winnerData.totalCorrect || 0} kandidaten:`}</div>
                   <div className="ac-list">
-                    {winnerData.correctVoters.map((v, i) => (
+                    {(winnerData.correctVoters || []).length === 0 && (
+                      <div className="empty">Nog geen {isNumeric ? "antwoorden" : "deelnemers"} voor deze vraag</div>
+                    )}
+                    {(winnerData.correctVoters || []).map((v, i) => (
                       <div key={v.user_id} className="ac-row">
                         <span className="ac-order">#{i+1}</span>
                         {isNumeric && <span className="ac-guess">{v.guess_value}</span>}
                         <span className="ac-name">{v.username ? "@"+v.username : v.first_name}</span>
-                        {isNumeric && <span className="ac-diff">±{v.diff}</span>}
+                        {isNumeric && v.diff != null && <span className="ac-diff">±{v.diff}</span>}
                         {v.uid && <span className="ac-uid">{v.uid}</span>}
                         {!isNumeric && <span className="ac-time">{new Date(v.voted_at).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"})}</span>}
                         <button className="btn-xs btn-primary" onClick={() => confirmWinner(v.user_id, true)}>Kies</button>
