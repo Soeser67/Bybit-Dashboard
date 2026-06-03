@@ -1721,6 +1721,7 @@ function CalendarTab() {
   const [winnerModal, setWinnerModal] = useState(null);
   const [winnerData, setWinnerData]   = useState(null);
   const [correctTag, setCorrectTag]   = useState("");
+  const [correctValue, setCorrectValue] = useState("");
   const [calPhoto, setCalPhoto]       = useState(null);
   const [calPreview, setCalPreview]   = useState(null);
   const [calPosting, setCalPosting]   = useState(false);
@@ -1849,17 +1850,23 @@ function CalendarTab() {
     load();
   }
 
-  function openWinner(ev) { setWinnerModal(ev); setCorrectTag(""); setWinnerData(null); }
+  function openWinner(ev) { setWinnerModal(ev); setCorrectTag(""); setCorrectValue(""); setWinnerData(null); }
 
   async function pickWinner() {
-    if (!correctTag) return;
-    const r = await api(`/api/calendar/${winnerModal.id}/pick-winner`, { method:"POST", body: JSON.stringify({ correctTag }) });
+    const isNumeric = (winnerModal.question_type || "tags") === "number";
+    if (isNumeric ? (correctValue === "" || correctValue == null) : !correctTag) return;
+    const r = await api(`/api/calendar/${winnerModal.id}/pick-winner`, {
+      method:"POST",
+      body: JSON.stringify(isNumeric ? { correctValue } : { correctTag }),
+    });
     setWinnerData(r);
   }
 
   async function confirmWinner(userId, announce) {
+    const isNumeric = (winnerModal.question_type || "tags") === "number";
     await api(`/api/calendar/${winnerModal.id}/confirm-winner`, {
-      method:"POST", body: JSON.stringify({ correctTag, winnerUserId: userId, announce })
+      method:"POST",
+      body: JSON.stringify(isNumeric ? { correctValue, winnerUserId: userId, announce } : { correctTag, winnerUserId: userId, announce }),
     });
     setWinnerModal(null); setWinnerData(null); load();
   }
@@ -2092,28 +2099,45 @@ function CalendarTab() {
       )}
 
       {/* Winner picker modal */}
-      {winnerModal && (
+      {winnerModal && (() => {
+        const isNumeric = (winnerModal.question_type || "tags") === "number";
+        return (
         <div className="modal-overlay" onClick={() => setWinnerModal(null)}>
           <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Winnaar kiezen</h3>
+              <h3>Winnaar kiezen{isNumeric ? " — dichtst bij" : ""}</h3>
               <button className="btn-icon" onClick={() => setWinnerModal(null)}><Icons.x /></button>
             </div>
             <div className="winner-q">"{winnerModal.question}"</div>
             {!winnerData ? (
               <>
-                <div className="form-group">
-                  <label>Wat is het juiste antwoord?</label>
-                  <div className="tag-select">
-                    {winnerModal.tags.map(tag => (
-                      <button key={tag} className={`tag-btn ${correctTag===tag?"selected":""}`} onClick={() => setCorrectTag(tag)}>
-                        {tag.replace("#","").toUpperCase()}
-                      </button>
-                    ))}
+                {isNumeric ? (
+                  <div className="form-group">
+                    <label>Wat was de werkelijke waarde?</label>
+                    <input
+                      className="input"
+                      type="number"
+                      step="any"
+                      placeholder="Bijv. 67432"
+                      value={correctValue}
+                      onChange={e => setCorrectValue(e.target.value)}
+                    />
+                    <div className="field-hint">De deelnemer die hier het dichtst bij zit, wordt voorgesteld als winnaar.</div>
                   </div>
-                </div>
+                ) : (
+                  <div className="form-group">
+                    <label>Wat is het juiste antwoord?</label>
+                    <div className="tag-select">
+                      {winnerModal.tags.map(tag => (
+                        <button key={tag} className={`tag-btn ${correctTag===tag?"selected":""}`} onClick={() => setCorrectTag(tag)}>
+                          {tag.replace("#","").toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="modal-actions">
-                  <button className="btn-primary" onClick={pickWinner} disabled={!correctTag}>
+                  <button className="btn-primary" onClick={pickWinner} disabled={isNumeric ? (correctValue==="") : !correctTag}>
                     <Icons.shuffle /> Toon kandidaten
                   </button>
                 </div>
@@ -2121,13 +2145,18 @@ function CalendarTab() {
             ) : (
               <>
                 <div className="winner-result-info">
-                  {winnerData.totalCorrect} mensen hadden het juiste antwoord ({correctTag.replace("#","").toUpperCase()})
+                  {isNumeric
+                    ? `${winnerData.totalCorrect} deelnemers · juiste waarde: ${winnerData.correctValue}`
+                    : `${winnerData.totalCorrect} mensen hadden het juiste antwoord (${correctTag.replace("#","").toUpperCase()})`}
                 </div>
                 {winnerData.suggestedWinner && (
                   <div className="suggested-winner">
-                    <div className="sw-label">🤖 Bot stelt voor:</div>
+                    <div className="sw-label">{isNumeric ? "🎯 Dichtst bij:" : "🤖 Bot stelt voor:"}</div>
                     <div className="sw-card">
-                      <div className="sw-name">{winnerData.suggestedWinner.username ? "@"+winnerData.suggestedWinner.username : winnerData.suggestedWinner.first_name}</div>
+                      <div className="sw-name">
+                        {winnerData.suggestedWinner.username ? "@"+winnerData.suggestedWinner.username : winnerData.suggestedWinner.first_name}
+                        {isNumeric && <span className="sw-guess"> · gok: {winnerData.suggestedWinner.guess_value} (±{winnerData.suggestedWinner.diff})</span>}
+                      </div>
                       {winnerData.suggestedWinner.uid && <div className="sw-uid">UID: {winnerData.suggestedWinner.uid}</div>}
                       <div className="sw-actions">
                         <button className="btn-sm btn-primary" onClick={() => confirmWinner(winnerData.suggestedWinner.user_id, true)}>
@@ -2141,14 +2170,16 @@ function CalendarTab() {
                   </div>
                 )}
                 <div className="all-candidates">
-                  <div className="ac-label">Of kies zelf uit alle {winnerData.totalCorrect} kandidaten:</div>
+                  <div className="ac-label">{isNumeric ? `Alle ${winnerData.totalCorrect} antwoorden (dichtst eerst):` : `Of kies zelf uit alle ${winnerData.totalCorrect} kandidaten:`}</div>
                   <div className="ac-list">
                     {winnerData.correctVoters.map((v, i) => (
                       <div key={v.user_id} className="ac-row">
                         <span className="ac-order">#{i+1}</span>
+                        {isNumeric && <span className="ac-guess">{v.guess_value}</span>}
                         <span className="ac-name">{v.username ? "@"+v.username : v.first_name}</span>
+                        {isNumeric && <span className="ac-diff">±{v.diff}</span>}
                         {v.uid && <span className="ac-uid">{v.uid}</span>}
-                        <span className="ac-time">{new Date(v.voted_at).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"})}</span>
+                        {!isNumeric && <span className="ac-time">{new Date(v.voted_at).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"})}</span>}
                         <button className="btn-xs btn-primary" onClick={() => confirmWinner(v.user_id, true)}>Kies</button>
                       </div>
                     ))}
@@ -2158,7 +2189,8 @@ function CalendarTab() {
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       <CalendarWinners />
     </div>
