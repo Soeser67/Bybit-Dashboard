@@ -1889,10 +1889,9 @@ function CalendarTab() {
   }
 
   async function confirmWinner(userId, announce) {
-    const isNumeric = (winnerModal.question_type || "tags") === "number";
     const r = await api(`/api/calendar/${winnerModal.id}/confirm-winner`, {
       method:"POST",
-      body: JSON.stringify(isNumeric ? { correctValue, winnerUserId: userId, announce } : { correctTag, winnerUserId: userId, announce }),
+      body: JSON.stringify({ correctTag, correctValue, winnerUserId: userId, announce }),
     });
     if (announce && r?.sent_status === "failed") {
       alert("De winnaar is opgeslagen, maar het bericht kon niet naar de groep worden gestuurd. Probeer het opnieuw of plaats handmatig.");
@@ -2133,6 +2132,8 @@ function CalendarTab() {
         winnerData={winnerData}
         correctTag={correctTag}
         setCorrectTag={setCorrectTag}
+        correctValue={correctValue}
+        setCorrectValue={setCorrectValue}
         onPick={pickWinner}
         onConfirm={confirmWinner}
         onClose={() => { setWinnerModal(null); setWinnerData(null); }}
@@ -2144,7 +2145,7 @@ function CalendarTab() {
 }
 
 // ── Calendar winner picker modal (simple, crash-proof) ─────────────────
-function CalendarWinnerModal({ event, winnerData, correctTag, setCorrectTag, onPick, onConfirm, onClose }) {
+function CalendarWinnerModal({ event, winnerData, correctTag, setCorrectTag, correctValue, setCorrectValue, onPick, onConfirm, onClose }) {
   if (!event) return null;
   const isNumeric = (event.question_type || "tags") === "number";
   const tags = Array.isArray(event.tags) ? event.tags : [];
@@ -2165,11 +2166,20 @@ function CalendarWinnerModal({ event, winnerData, correctTag, setCorrectTag, onP
         </div>
         <div className="winner-q">"{event.question}"</div>
 
-        {/* Tag quizzes: first pick the correct answer. Numeric: answers load right away. */}
-        {!isNumeric && !winnerData && (
-          <>
-            <div className="form-group">
-              <label>Wat is het juiste antwoord?</label>
+        {/* Juiste antwoord invoeren */}
+        <div className="form-group">
+          <label>Wat is het juiste antwoord?</label>
+          {isNumeric ? (
+            <input
+              className="input"
+              type="number"
+              step="any"
+              placeholder="Vul het juiste getal in, bijv. 234987"
+              value={correctValue}
+              onChange={e => setCorrectValue(e.target.value)}
+            />
+          ) : (
+            <div className="winner-answer-row">
               <div className="tag-select">
                 {tags.map(tag => (
                   <button key={tag} className={`tag-btn ${correctTag === tag ? "selected" : ""}`} onClick={() => setCorrectTag(tag)}>
@@ -2177,14 +2187,24 @@ function CalendarWinnerModal({ event, winnerData, correctTag, setCorrectTag, onP
                   </button>
                 ))}
               </div>
+              <input
+                className="input winner-value-input"
+                placeholder="of typ zelf het juiste antwoord"
+                value={correctValue}
+                onChange={e => setCorrectValue(e.target.value)}
+              />
             </div>
-            <button className="btn-primary" style={{ width: "100%" }} onClick={onPick} disabled={!correctTag}>
-              <Icons.shuffle /> Toon deelnemers
-            </button>
-          </>
+          )}
+        </div>
+
+        {/* Tag quizzes need a button to load the voters for the chosen tag */}
+        {!isNumeric && (
+          <button className="btn-secondary" style={{ width: "100%", marginBottom: "14px" }} onClick={onPick} disabled={!correctTag}>
+            <Icons.shuffle /> Toon deelnemers van dit antwoord
+          </button>
         )}
 
-        {/* Answer list — pick the winner here */}
+        {/* Answer list */}
         {(isNumeric || winnerData) && (
           <div className="winner-candidates">
             <div className="wc-header">
