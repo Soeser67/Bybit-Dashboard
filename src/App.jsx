@@ -23,21 +23,13 @@ function uploadPhoto(file, caption, tagUserId) {
   }).then(r => r.json());
 }
 
-// Reusable photo attach control: pick a file, preview it, clear it.
+// Reusable photo attach control: pick a file, show only the filename (no preview thumbnail).
 function PhotoAttach({ photo, setPhoto }) {
   const inputId = "photo-" + Math.random().toString(36).slice(2, 8);
-  const [preview, setPreview] = useState(null);
-
   function onPick(e) {
     const f = e.target.files?.[0];
-    if (!f) return;
-    setPhoto(f);
-    const reader = new FileReader();
-    reader.onload = ev => setPreview(ev.target.result);
-    reader.readAsDataURL(f);
+    if (f) setPhoto(f);
   }
-  function clear() { setPhoto(null); setPreview(null); }
-
   return (
     <div className="photo-attach">
       {!photo ? (
@@ -46,14 +38,69 @@ function PhotoAttach({ photo, setPhoto }) {
           <input id={inputId} type="file" accept="image/*" onChange={onPick} style={{ display: "none" }} />
         </label>
       ) : (
-        <div className="photo-preview">
-          {preview && <img src={preview} alt="preview" />}
-          <div className="photo-preview-info">
-            <span className="photo-name">{photo.name}</span>
-            <button className="photo-remove" onClick={clear}>✕ Verwijder</button>
-          </div>
+        <div className="photo-chip">
+          📷 <span className="photo-chip-name">{photo.name}</span>
+          <button className="photo-remove" onClick={() => setPhoto(null)}>✕</button>
         </div>
       )}
+    </div>
+  );
+}
+
+// Telegram-style preview + confirm popup. Shows how the message will look in the group.
+// `photo` is a File (optional). `note` shows scheduling info. onConfirm/onCancel are callbacks.
+function TelegramPreview({ open, title, text, photo, note, confirmLabel, onConfirm, onCancel, sending }) {
+  const [photoUrl, setPhotoUrl] = useState(null);
+  useEffect(() => {
+    if (photo) {
+      const url = URL.createObjectURL(photo);
+      setPhotoUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setPhotoUrl(null);
+  }, [photo]);
+
+  if (!open) return null;
+
+  // Render *bold* markdown as <strong> for the preview
+  function renderText(t) {
+    if (!t) return null;
+    const parts = t.split(/(\*[^*]+\*)/g);
+    return parts.map((p, i) =>
+      p.startsWith("*") && p.endsWith("*") && p.length > 1
+        ? <strong key={i}>{p.slice(1, -1)}</strong>
+        : <span key={i}>{p}</span>
+    );
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal tg-preview-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>{title || "Voorbeeld"}</h3>
+          <button className="btn-icon" onClick={onCancel}><Icons.x /></button>
+        </div>
+        <div className="tg-preview-hint">Zo verschijnt het bericht in de groep:</div>
+
+        {/* Telegram chat mockup */}
+        <div className="tg-chat-bg">
+          <div className="tg-bubble">
+            <div className="tg-bubble-name">Bybit EU Bot</div>
+            {photoUrl && <img className="tg-bubble-photo" src={photoUrl} alt="preview" />}
+            <div className="tg-bubble-text">{renderText(text)}</div>
+            <div className="tg-bubble-time">{new Date().toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"})}</div>
+          </div>
+        </div>
+
+        {note && <div className="tg-preview-note">{note}</div>}
+
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onCancel}>Annuleer</button>
+          <button className="btn-primary" onClick={onConfirm} disabled={sending}>
+            <Icons.send /> {sending ? "Bezig..." : (confirmLabel || "Plaatsen")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -459,6 +506,10 @@ function PredictionsTab() {
   const [announceTxt, setAnnounceTxt] = useState("");
   const [announceSent, setAnnounceSent] = useState(false);
   const [announcePhoto, setAnnouncePhoto] = useState(null);
+  const [createPreview, setCreatePreview] = useState(false);
+  const [announcePreview, setAnnouncePreview] = useState(false);
+  const [editPred, setEditPred] = useState(null);
+  const [posting, setPosting] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -485,8 +536,65 @@ function PredictionsTab() {
     setVoters(r);
   }
 
-  async function createPrediction() {
+  // Build the preview text exactly like the bot will post it
+  function buildPredictionPreview() {
+    const tags = form.tags.split(/[\s,]+/).filter(Boolean).map(t => t.startsWith("#") ? t : "#"+t);
+    const prizeLine = form.prize ? `\n\n🏆 Te winnen: *${form.prize}*` : "";
+    if (form.questionType === "number") {
+      const tagWord = tags[0] || "#prijs";
+      return `🔢 *${form.question}*${prizeLine}\n\nDoe mee door je antwoord te sturen met ${tagWord}, bijvoorbeeld:\n${tagWord} 67500\n\nWie het dichtst bij zit wint!`;
+    }
+    return `🚀 *Nieuwe predictie!*\n\n"${form.question}"\n\nStem met: ${tags.join("  ")}${prizeLine}`;
+  }
+
+  function openCreatePreview() {
     if (!form.question.trim() || !form.tags.trim()) return;
+    setCreatePreview(true);
+  }
+
+  function openEditPrediction(q) {
+    setEditPred({
+      id: q.id,
+      question: q.question,
+      tags: (q.tags || []).join(" "),
+      prize: q.prize || "",
+      questionType: q.question_type || "tags",
+    });
+  }
+
+  function buildEditPredPreview(ep) {
+    const tags = (ep.tags||"").split(/[\s,]+/).filter(Boolean).map(t => t.startsWith("#") ? t : "#"+t);
+    const prizeLine = ep.prize ? `\n\n\u{1F3C6} Te winnen: *${ep.prize}*` : "";
+    if (ep.questionType === "number") {
+      const tagWord = tags[0] || "#prijs";
+      return `\u{1F522} *${ep.question}*${prizeLine}\n\nDoe mee met ${tagWord}, bijv: ${tagWord} 67500\n\nWie het dichtst zit wint!`;
+    }
+    return `\u{1F680} *Nieuwe predictie!*\n\n"${ep.question}"\n\nStem met: ${tags.join("  ")}${prizeLine}`;
+  }
+
+  async function saveEditPred() {
+    const tags = editPred.tags.split(/[\s,]+/).filter(Boolean);
+    await api(`/api/predictions/${editPred.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ question: editPred.question, tags, prize: editPred.prize, questionType: editPred.questionType }),
+    });
+    setEditPred(null);
+    load();
+  }
+
+  async function deletePrediction(id) {
+    await api(`/api/predictions/${id}`, { method: "DELETE" });
+    load();
+  }
+
+  async function postPredNow() {
+    await api(`/api/predictions/${editPred.id}/post-now`, { method: "POST" });
+    setEditPred(null);
+    load();
+  }
+
+  async function confirmCreate() {
+    setPosting(true);
     const tags = form.tags.split(/[\s,]+/).filter(Boolean);
     await api("/api/predictions/create", {
       method: "POST",
@@ -495,6 +603,8 @@ function PredictionsTab() {
         voteType: form.voteType, questionType: form.questionType, prize: form.prize || null,
       }),
     });
+    setPosting(false);
+    setCreatePreview(false);
     setCreating(false);
     setForm({ question: "", tags: "", scheduleAt: "", voteType: "text", questionType: "tags", prize: "" });
     load();
@@ -529,12 +639,15 @@ function PredictionsTab() {
     load();
   }
 
-  async function announce() {
+  function openAnnouncePreview() {
     if (!announceTxt.trim() && !announcePhoto) return;
+    setAnnouncePreview(true);
+  }
+
+  async function announce() {
     setAnnouncing(true);
     let r;
     if (announcePhoto) {
-      // Send as photo with caption
       r = await uploadPhoto(announcePhoto, announceTxt, revealResult?.tagUserId || null);
     } else {
       r = await api("/api/predictions/" + revealResult?.qId + "/announce", {
@@ -543,6 +656,7 @@ function PredictionsTab() {
       });
     }
     setAnnouncing(false);
+    setAnnouncePreview(false);
     setAnnounceSent(r.sent_status !== "failed");
   }
 
@@ -684,13 +798,27 @@ function PredictionsTab() {
             </div>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setCreating(false)}>Annuleer</button>
-              <button className="btn-primary" onClick={createPrediction}>
-                {form.scheduleAt ? <><Icons.clock /> Inplannen</> : <><Icons.send /> Nu posten</>}
+              <button className="btn-primary" onClick={openCreatePreview} disabled={!form.question.trim() || !form.tags.trim()}>
+                {form.scheduleAt ? <><Icons.clock /> Voorbeeld & inplannen</> : <><Icons.send /> Voorbeeld & posten</>}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Create preview popup */}
+      <TelegramPreview
+        open={createPreview}
+        title={form.scheduleAt ? "Voorbeeld — inplannen" : "Voorbeeld — nu posten"}
+        text={buildPredictionPreview()}
+        note={form.scheduleAt
+          ? `Wordt automatisch geplaatst op ${new Date(form.scheduleAt).toLocaleString("nl-NL",{day:"numeric",month:"long",hour:"2-digit",minute:"2-digit"})}`
+          : "Wordt direct in de groep geplaatst"}
+        confirmLabel={form.scheduleAt ? "Inplannen" : "Nu posten"}
+        sending={posting}
+        onConfirm={confirmCreate}
+        onCancel={() => setCreatePreview(false)}
+      />
 
       {/* Reveal modal */}
       {reveal.show && (
@@ -832,12 +960,25 @@ function PredictionsTab() {
           {announceSent ? (
             <div className="announce-confirm">✅ Verstuurd naar de groep!</div>
           ) : (
-            <button className="btn-primary" onClick={announce} disabled={announcing || (!announceTxt.trim() && !announcePhoto)} style={{marginTop:"0.5rem"}}>
-              <Icons.send /> {announcing ? "Versturen..." : "Stuur naar groep"}
+            <button className="btn-primary" onClick={openAnnouncePreview} disabled={announcing || (!announceTxt.trim() && !announcePhoto)} style={{marginTop:"0.5rem"}}>
+              <Icons.send /> Voorbeeld & versturen
             </button>
           )}
         </div>
       )}
+
+      {/* Announce preview popup */}
+      <TelegramPreview
+        open={announcePreview}
+        title="Voorbeeld aankondiging"
+        text={announceTxt}
+        photo={announcePhoto}
+        note="Wordt direct in de groep geplaatst"
+        confirmLabel="Versturen"
+        sending={announcing}
+        onConfirm={announce}
+        onCancel={() => setAnnouncePreview(false)}
+      />
 
       {/* Voters sidebar */}
       {selected && voters && (
@@ -950,11 +1091,53 @@ function PredictionsTab() {
                   <Icons.trophy /> {isNumeric ? "Winnaars" : "Onthullen"}
                 </button>
               )}
+              {q.closed === 2 && (
+                <button className="btn-sm btn-primary" onClick={() => openEditPrediction(q)}>
+                  <Icons.edit /> Bekijk & bewerk
+                </button>
+              )}
             </div>
           </div>
         );})}
         {predictions.length === 0 && <div className="empty">Nog geen predicties aangemaakt</div>}
       </div>
+
+      {/* Edit scheduled prediction modal */}
+      {editPred && (
+        <div className="modal-overlay" onClick={() => setEditPred(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Ingeplande predictie bewerken</h3>
+              <button className="btn-icon" onClick={() => setEditPred(null)}><Icons.x /></button>
+            </div>
+            <div className="tg-chat-bg" style={{marginBottom:"14px"}}>
+              <div className="tg-bubble">
+                <div className="tg-bubble-name">Bybit EU Bot</div>
+                <div className="tg-bubble-text">{buildEditPredPreview(editPred)}</div>
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Vraag</label>
+              <input className="input" value={editPred.question} onChange={e => setEditPred(p=>({...p,question:e.target.value}))} />
+            </div>
+            <div className="form-group">
+              <label>Stemopties</label>
+              <input className="input" value={editPred.tags} onChange={e => setEditPred(p=>({...p,tags:e.target.value}))} />
+            </div>
+            <div className="form-group">
+              <label>Prijs (optioneel)</label>
+              <input className="input" value={editPred.prize} onChange={e => setEditPred(p=>({...p,prize:e.target.value}))} />
+            </div>
+            <div className="modal-actions" style={{justifyContent:"space-between"}}>
+              <button className="btn-danger-text" onClick={() => { deletePrediction(editPred.id); setEditPred(null); }}>Verwijder</button>
+              <div style={{display:"flex",gap:"8px"}}>
+                <button className="btn-secondary" onClick={saveEditPred}>Opslaan</button>
+                <button className="btn-primary" onClick={postPredNow}><Icons.send /> Nu plaatsen</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1539,6 +1722,9 @@ function CalendarTab() {
   const [winnerData, setWinnerData]   = useState(null);
   const [correctTag, setCorrectTag]   = useState("");
   const [calPhoto, setCalPhoto]       = useState(null);
+  const [calPreview, setCalPreview]   = useState(null);
+  const [calPosting, setCalPosting]   = useState(false);
+  const [editEvent, setEditEvent]     = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1575,8 +1761,24 @@ function CalendarTab() {
     setForm({ type:"quiz", questionType:"tags", question:"", tags:"", prizeAmount:"", prizeCurrency:"USDC", teaserMinutes:20, time:"18:00" });
   }
 
-  async function createEvent(postNow = false) {
+  function buildCalPreview(f) {
+    const tags = (f.tags||"").split(/[\s,]+/).filter(Boolean).map(t => t.startsWith("#") ? t : "#"+t);
+    const prize = f.prizeAmount ? `${f.prizeAmount} ${f.prizeCurrency||"USDC"}` : "";
+    if ((f.questionType||"tags") === "number") {
+      const tagWord = tags[0] || "#prijs";
+      return `🔢 *${f.question}*${prize?`\n\n🏆 Win ${prize}!`:""}\n\nStuur je antwoord met ${tagWord}, bijv: ${tagWord} 67500\n\nWie het dichtst zit wint!`;
+    }
+    return `🎯 *VRAAG TIJD!*${prize?` Win ${prize}! 💰`:""}\n\n"${f.question}"\n\nStem met: ${tags.join("  ")}\n\nTyp je keuze in een bericht!`;
+  }
+
+  function openCreatePreview(postNow) {
     if (!form.question.trim() || !form.tags.trim()) return;
+    setCalPreview({ mode: postNow ? "now" : "schedule", form: { ...form }, photo: calPhoto });
+  }
+
+  async function confirmCreate() {
+    const postNow = calPreview.mode === "now";
+    setCalPosting(true);
     const tags = form.tags.split(/[\s,]+/).filter(Boolean);
     const scheduledTime = new Date(`${selectedDay}T${form.time}:00`).toISOString();
     await api("/api/calendar/create", {
@@ -1589,13 +1791,56 @@ function CalendarTab() {
         postNow,
       })
     });
-    // If posting now with a photo attached, send the photo as a follow-up
-    if (postNow && calPhoto) {
-      await uploadPhoto(calPhoto, "", null);
-    }
+    if (postNow && calPhoto) await uploadPhoto(calPhoto, "", null);
+    setCalPosting(false);
+    setCalPreview(null);
     setForm(p => ({ ...p, question:"", tags:"", prizeAmount:"" }));
     setCalPhoto(null);
     load();
+  }
+
+  // Open a scheduled event for editing
+  function openEdit(ev) {
+    setEditEvent({
+      id: ev.id,
+      type: ev.event_type || "quiz",
+      questionType: ev.question_type || "tags",
+      question: ev.question,
+      tags: (ev.tags || JSON.parse(ev.valid_tags || "[]")).join(" "),
+      prizeAmount: ev.prize_amount || "",
+      prizeCurrency: ev.prize_currency || "USDC",
+      teaserMinutes: ev.teaser_minutes ?? 20,
+      time: ev.scheduled_time ? new Date(ev.scheduled_time).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"}) : "18:00",
+      scheduledTime: ev.scheduled_time,
+      event_date: ev.event_date,
+    });
+  }
+
+  async function saveEdit() {
+    const tags = editEvent.tags.split(/[\s,]+/).filter(Boolean);
+    const scheduledTime = new Date(`${editEvent.event_date}T${editEvent.time}:00`).toISOString();
+    await api(`/api/calendar/${editEvent.id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        question: editEvent.question, tags,
+        prizeAmount: editEvent.prizeAmount, prizeCurrency: editEvent.prizeCurrency,
+        teaserMinutes: parseInt(editEvent.teaserMinutes), scheduledTime,
+        eventType: editEvent.type, questionType: editEvent.questionType,
+      })
+    });
+    setEditEvent(null);
+    load();
+  }
+
+  async function postScheduledNow() {
+    await api(`/api/calendar/${editEvent.id}/post-now`, { method: "POST" });
+    setEditEvent(null);
+    load();
+  }
+
+  async function createEvent(postNow = false) {
+    // kept for backwards-compat; routed through preview
+    openCreatePreview(postNow);
   }
 
   async function deleteEvent(id) {
@@ -1701,6 +1946,7 @@ function CalendarTab() {
                     </div>
                     <div className="chi-actions">
                       {ev.question_sent && !ev.closed && <button className="btn-xs btn-primary" onClick={() => openWinner(ev)}>Winnaar kiezen</button>}
+                      {!ev.question_sent && !ev.closed && <button className="btn-xs btn-primary" onClick={() => openEdit(ev)}>✏️ Bekijk & bewerk</button>}
                       {!ev.closed && <button className="btn-xs" onClick={() => deleteEvent(ev.id)}>Verwijder</button>}
                     </div>
                   </div>
@@ -1768,10 +2014,10 @@ function CalendarTab() {
               <div className="cal-photo-hint">{calPhoto ? "Foto wordt meegestuurd bij 'Nu plaatsen'" : ""}</div>
 
               <div className="cal-create-actions">
-                <button className="btn-secondary" onClick={() => createEvent(false)} disabled={!form.question.trim() || !form.tags.trim()}>
+                <button className="btn-secondary" onClick={() => openCreatePreview(false)} disabled={!form.question.trim() || !form.tags.trim()}>
                   <Icons.clock /> Inplannen
                 </button>
-                <button className="btn-primary" onClick={() => createEvent(true)} disabled={!form.question.trim() || !form.tags.trim()}>
+                <button className="btn-primary" onClick={() => openCreatePreview(true)} disabled={!form.question.trim() || !form.tags.trim()}>
                   <Icons.send /> Nu plaatsen
                 </button>
               </div>
@@ -1779,6 +2025,71 @@ function CalendarTab() {
           </div>
         )}
       </div>
+
+      {/* Create preview popup */}
+      <TelegramPreview
+        open={!!calPreview}
+        title={calPreview?.mode === "now" ? "Voorbeeld — nu plaatsen" : "Voorbeeld — inplannen"}
+        text={calPreview ? buildCalPreview(calPreview.form) : ""}
+        photo={calPreview?.mode === "now" ? calPreview?.photo : null}
+        note={calPreview?.mode === "now"
+          ? "Wordt direct in de groep geplaatst"
+          : `Wordt geplaatst op ${selectedDay ? new Date(selectedDay+"T"+form.time+":00").toLocaleString("nl-NL",{day:"numeric",month:"long",hour:"2-digit",minute:"2-digit"}) : ""}`}
+        confirmLabel={calPreview?.mode === "now" ? "Nu plaatsen" : "Inplannen"}
+        sending={calPosting}
+        onConfirm={confirmCreate}
+        onCancel={() => setCalPreview(null)}
+      />
+
+      {/* Edit scheduled event modal */}
+      {editEvent && (
+        <div className="modal-overlay" onClick={() => setEditEvent(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Ingeplande post bewerken</h3>
+              <button className="btn-icon" onClick={() => setEditEvent(null)}><Icons.x /></button>
+            </div>
+
+            {/* Live preview of the edited message */}
+            <div className="tg-chat-bg" style={{marginBottom:"14px"}}>
+              <div className="tg-bubble">
+                <div className="tg-bubble-name">Bybit EU Bot</div>
+                <div className="tg-bubble-text">{buildCalPreview(editEvent)}</div>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Vraag</label>
+              <input className="input" value={editEvent.question} onChange={e => setEditEvent(p=>({...p,question:e.target.value}))} />
+            </div>
+            <div className="form-group">
+              <label>Stemopties</label>
+              <input className="input" value={editEvent.tags} onChange={e => setEditEvent(p=>({...p,tags:e.target.value}))} />
+            </div>
+            <div className="form-row">
+              <div className="form-group" style={{flex:1}}>
+                <label>Prijs</label>
+                <input className="input" value={editEvent.prizeAmount} onChange={e => setEditEvent(p=>({...p,prizeAmount:e.target.value}))} />
+              </div>
+              <div className="form-group" style={{width:"90px"}}>
+                <label>Munt</label>
+                <input className="input" value={editEvent.prizeCurrency} onChange={e => setEditEvent(p=>({...p,prizeCurrency:e.target.value}))} />
+              </div>
+              <div className="form-group" style={{width:"110px"}}>
+                <label>Tijd</label>
+                <input className="input" type="time" value={editEvent.time} onChange={e => setEditEvent(p=>({...p,time:e.target.value}))} />
+              </div>
+            </div>
+            <div className="modal-actions" style={{justifyContent:"space-between"}}>
+              <button className="btn-danger-text" onClick={() => { deleteEvent(editEvent.id); setEditEvent(null); }}>Verwijder</button>
+              <div style={{display:"flex",gap:"8px"}}>
+                <button className="btn-secondary" onClick={saveEdit}>Opslaan</button>
+                <button className="btn-primary" onClick={postScheduledNow}><Icons.send /> Nu plaatsen</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Winner picker modal */}
       {winnerModal && (
@@ -2057,6 +2368,8 @@ function AutoMessagesTab() {
   const [sendStatus, setSendStatus] = useState({}); // id -> 'posted'|'failed'
   const [tagInput, setTagInput] = useState({}); // id -> userId
   const [photoInput, setPhotoInput] = useState({}); // id -> File
+  const [previewMsg, setPreviewMsg] = useState(null);
+  const [sending, setSending] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2080,6 +2393,11 @@ function AutoMessagesTab() {
     load();
   }
 
+  function openSendPreview(m) {
+    const tagUserId = m.tag_winner ? (tagInput[m.id] || "").trim() : null;
+    setPreviewMsg({ ...m, _tagUserId: tagUserId, _photo: photoInput[m.id] || null });
+  }
+
   async function sendMsg(m) {
     const tagUserId = m.tag_winner ? (tagInput[m.id] || "").trim() : null;
     const photo = photoInput[m.id];
@@ -2091,6 +2409,7 @@ function AutoMessagesTab() {
     }
     setSendStatus(p => ({ ...p, [m.id]: r.sent_status || (r.success ? "posted" : "failed") }));
     setPhotoInput(p => { const n = {...p}; delete n[m.id]; return n; });
+    setPreviewMsg(null);
     load();
   }
 
@@ -2157,12 +2476,12 @@ function AutoMessagesTab() {
                     value={tagInput[m.id] || ""}
                     onChange={e => setTagInput(p=>({...p,[m.id]:e.target.value}))}
                   />
-                  <button className="btn-primary" onClick={() => sendMsg(m)}><Icons.send /> Verstuur</button>
+                  <button className="btn-primary" onClick={() => openSendPreview(m)}><Icons.send /> Verstuur</button>
                   <SendDot status={sendStatus[m.id] || m.last_status} />
                 </div>
               ) : (
                 <div className="am-send-row">
-                  <button className="btn-primary" onClick={() => sendMsg(m)}><Icons.send /> Verstuur naar groep</button>
+                  <button className="btn-primary" onClick={() => openSendPreview(m)}><Icons.send /> Verstuur naar groep</button>
                   <SendDot status={sendStatus[m.id] || m.last_status} />
                   {m.last_sent && <span className="am-last">Laatst: {new Date(m.last_sent).toLocaleString("nl-NL",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>}
                 </div>
@@ -2171,11 +2490,21 @@ function AutoMessagesTab() {
           ))}
         </div>
       )}
+
+      <TelegramPreview
+        open={!!previewMsg}
+        title="Voorbeeld bericht"
+        text={previewMsg?.body}
+        photo={previewMsg?._photo}
+        note={previewMsg?._tagUserId ? `Winnaar (ID ${previewMsg._tagUserId}) wordt getagd` : "Wordt direct in de groep geplaatst"}
+        confirmLabel="Versturen"
+        sending={sending}
+        onConfirm={async () => { setSending(true); await sendMsg(previewMsg); setSending(false); }}
+        onCancel={() => setPreviewMsg(null)}
+      />
     </div>
   );
 }
-
-// Small colored dot showing send status: blue=posted, red=failed
 function SendDot({ status }) {
   if (!status) return null;
   if (status === "posted") return <span className="send-dot posted" title="Verzonden naar groep">● Geplaatst</span>;
