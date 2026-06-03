@@ -657,7 +657,12 @@ function PredictionsTab() {
     }
     setAnnouncing(false);
     setAnnouncePreview(false);
-    setAnnounceSent(r.sent_status !== "failed");
+    if (r?.sent_status === "failed" || r?.error) {
+      alert("Het bericht kon niet naar de groep worden gestuurd: " + (r?.error || "onbekende fout") + "\n\nControleer of de bot in de groep zit en probeer opnieuw.");
+      setAnnounceSent(false);
+    } else {
+      setAnnounceSent(true);
+    }
   }
 
   async function doRevealNumber() {
