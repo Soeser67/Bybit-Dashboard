@@ -617,6 +617,8 @@ function PredictionsTab() {
       body: JSON.stringify({ correctTag: reveal.correctTag, winnersCount: reveal.count }),
     });
     r.qId = reveal.qId;
+    // Tag the first winner so the bot can build a safe @mention from {winner}
+    if (r.winners?.length) r.tagUserId = r.winners[0].user_id;
     setRevealResult(r);
     setReveal(prev => ({ ...prev, show: false }));
     setAnnounceSent(false);
@@ -626,11 +628,15 @@ function PredictionsTab() {
     const answer = r.correct?.replace("#","").toUpperCase();
     let txt = `🎯 *Uitslag!*\n\nDe vraag was: "${q?.question || ""}"\nHet juiste antwoord: *${answer}*\n\n`;
     if (r.winners?.length) {
-      txt += `🏆 *Winnaars:*\n`;
-      r.winners.forEach((w, i) => {
-        const medal = ["🥇","🥈","🥉"][i] || `${i+1}.`;
-        txt += `${medal} ${w.username ? "@"+w.username : w.first_name}\n`;
-      });
+      // Use {winner} for the first winner so the bot makes a clean, escaped mention
+      txt += `🏆 *Winnaar:* {winner}\n`;
+      if (r.winners.length > 1) {
+        txt += `\nOok goed:\n`;
+        r.winners.slice(1).forEach((w, i) => {
+          const name = w.username ? "@"+w.username : w.first_name;
+          txt += `${i+2}. ${name}\n`;
+        });
+      }
       txt += `\nGefeliciteerd! 🎉`;
     } else {
       txt += `Niemand had het juiste antwoord dit keer!`;
