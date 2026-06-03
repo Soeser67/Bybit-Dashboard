@@ -1052,3 +1052,8 @@ textarea.input { resize: vertical; min-height: 80px; }
 /* ── danger text button ──────────────────────────────────────────── */
 .btn-danger-text { background: none; border: none; color: var(--red); cursor: pointer; font-size: 13px; font-family: inherit; padding: 8px 4px; }
 .btn-danger-text:hover { text-decoration: underline; }
+
+/* ── Numeric winner picker ───────────────────────────────────────── */
+.sw-guess { font-size: 12px; color: var(--text-2); font-weight: 400; font-family: 'JetBrains Mono', monospace; }
+.ac-guess { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--yellow); min-width: 70px; }
+.ac-diff { font-size: 11px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; }
