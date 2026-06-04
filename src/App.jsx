@@ -1231,6 +1231,11 @@ function FeedbackTab() {
   const [starting, setStarting]   = useState(false);
   const [duration, setDuration]   = useState(1);
   const [viewSession, setViewSession] = useState(null);
+  const [fbPrize, setFbPrize]             = useState("");
+  const [fbAnnounceTxt, setFbAnnounceTxt] = useState("");
+  const [fbPreview, setFbPreview]         = useState(false);
+  const [fbSending, setFbSending]         = useState(false);
+  const [fbAnnounceSent, setFbAnnounceSent] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1263,6 +1268,40 @@ function FeedbackTab() {
     const ids = selected.size > 0 ? [...selected] : [];
     const r = await api("/api/feedback/pick-winners", { method:"POST", body: JSON.stringify({ count, ids }) });
     setWinners(r.winners);
+    setFbAnnounceSent(false);
+    // Auto-fill the announcement text
+    const prizeLine = fbPrize ? ` Jullie winnen elk *${fbPrize}*!` : "";
+    setFbAnnounceTxt(`💡 *Bedankt voor alle feedback!*\n\nWe hebben alle inzendingen doorgenomen en de winnaars zijn:\n\n{winners}\n\nGefeliciteerd!${prizeLine} 🎉\n\nDM ons om je prijs te claimen!`);
+  }
+
+  // Build the preview text with the prize line kept in sync
+  function buildFbAnnounce() {
+    let txt = fbAnnounceTxt;
+    // Show {winners} as readable names in the preview
+    if (winners && winners.length) {
+      const names = winners.map(w => w.username ? "@"+w.username : w.first_name).join(", ");
+      txt = txt.replace(/\{winners\}/g, names);
+    }
+    return txt;
+  }
+
+  async function announceFbWinners() {
+    if (!winners || !winners.length) return;
+    setFbSending(true);
+    // Append prize line if the user set a prize but didn't include it in the text
+    let msg = fbAnnounceTxt;
+    const winnerIds = winners.map(w => w.user_id).filter(Boolean);
+    const r = await api("/api/feedback/announce-winners", {
+      method: "POST",
+      body: JSON.stringify({ message: msg, winnerIds, prize: fbPrize || null }),
+    });
+    setFbSending(false);
+    setFbPreview(false);
+    if (r?.sent_status === "failed" || r?.error) {
+      alert("Het bericht kon niet worden verstuurd: " + (r?.error || "onbekende fout"));
+    } else {
+      setFbAnnounceSent(true);
+    }
   }
 
   function exportSession(sessionId) {
@@ -1407,10 +1446,49 @@ function FeedbackTab() {
                 <span className="winner-msg">"{w.message}"</span>
               </div>
             ))}
-            <button className="btn-sm" style={{marginTop:"8px"}} onClick={() => setWinners(null)}>Sluiten</button>
+
+            {/* Announce to group */}
+            <div className="fb-announce">
+              <div className="result-section-label">🏆 Prijs & aankondiging</div>
+              <div className="form-group">
+                <label>Prijs per winnaar (optioneel)</label>
+                <input className="input" placeholder="Bijv. 10 USDC" value={fbPrize} onChange={e => {
+                  const newPrize = e.target.value;
+                  setFbPrize(newPrize);
+                  const prizeLine = newPrize ? ` Jullie winnen elk *${newPrize}*!` : "";
+                  setFbAnnounceTxt(`\u{1F4A1} *Bedankt voor alle feedback!*\n\nWe hebben alle inzendingen doorgenomen en de winnaars zijn:\n\n{winners}\n\nGefeliciteerd!${prizeLine} \u{1F389}\n\nDM ons om je prijs te claimen!`);
+                }} />
+              </div>
+              <div className="form-group">
+                <label>Bericht naar de groep</label>
+                <div className="announce-hint">Gebruik <code>{"{winners}"}</code> om de winnaars te taggen.</div>
+                <textarea className="input" rows={5} value={fbAnnounceTxt} onChange={e => setFbAnnounceTxt(e.target.value)} />
+              </div>
+              {fbAnnounceSent ? (
+                <div className="announce-confirm">✅ Verstuurd naar de groep!</div>
+              ) : (
+                <button className="btn-primary" onClick={() => setFbPreview(true)} disabled={!fbAnnounceTxt.trim()}>
+                  <Icons.send /> Voorbeeld & versturen
+                </button>
+              )}
+            </div>
+
+            <button className="btn-sm" style={{marginTop:"8px"}} onClick={() => { setWinners(null); setFbAnnounceSent(false); }}>Sluiten</button>
           </div>
         )}
       </div>
+
+      {/* Feedback winner announcement preview */}
+      <TelegramPreview
+        open={fbPreview}
+        title="Voorbeeld feedback-aankondiging"
+        text={buildFbAnnounce()}
+        note="Wordt direct in de groep geplaatst"
+        confirmLabel="Versturen"
+        sending={fbSending}
+        onConfirm={announceFbWinners}
+        onCancel={() => setFbPreview(false)}
+      />
 
       {/* Feedback list */}
       {loading ? <div className="loading">Laden...</div> : (
@@ -2267,7 +2345,7 @@ function CalendarWinners() {
       <div className="card-header">
         <h3>🏆 Winnaars overzicht</h3>
         <div className="period-filter">
-          {[["day","Vandaag"],["week","Deze week"],["month","Deze maand"]].map(([k,l]) => (
+          {[["day","Vandaag"],["week","Deze week"],["month","Deze maand"],["all","Alles"]].map(([k,l]) => (
             <button key={k} className={`period-btn ${period===k?"selected":""}`} onClick={() => setPeriod(k)}>{l}</button>
           ))}
         </div>
@@ -2596,11 +2674,123 @@ function SendDot({ status }) {
   return <span className="send-dot failed" title="Niet geplaatst in groep">● Niet geplaatst</span>;
 }
 
+// Winners Tab (all-time leaderboard of prize winners)
+function WinnersTab() {
+  const [winners, setWinners]     = useState([]);
+  const [totalPrizes, setTotal]   = useState(0);
+  const [totalWinners, setTotalW] = useState(0);
+  const [loading, setLoading]     = useState(true);
+  const [preview, setPreview]     = useState(false);
+  const [sending, setSending]     = useState(false);
+  const [sent, setSent]           = useState(false);
+  const [msg, setMsg]             = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await api("/api/winners/all");
+    setWinners(r.winners || []);
+    setTotal(r.totalPrizes || 0);
+    setTotalW(r.totalWinners || 0);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    setMsg(`\u{1F381} *Community Giveaway Update!*\n\nIn totaal hebben we al *{total} prijzen* weggegeven aan *{winners_count} verschillende leden*! \u{1F525}\n\nBedankt voor jullie deelname \u2014 er komen nog veel meer kansen om te winnen! \u{1F680}`);
+  }, []);
+
+  function previewText() {
+    return msg.replace(/\{total\}/g, totalPrizes).replace(/\{winners_count\}/g, totalWinners);
+  }
+
+  async function sendTotal() {
+    setSending(true);
+    const r = await api("/api/winners/announce-total", { method:"POST", body: JSON.stringify({ message: msg }) });
+    setSending(false);
+    setPreview(false);
+    if (r?.sent_status === "failed" || r?.error) {
+      alert("Versturen mislukt: " + (r?.error || "onbekende fout"));
+    } else {
+      setSent(true);
+      setTimeout(() => setSent(false), 3000);
+    }
+  }
+
+  return (
+    <div className="tab-content">
+      <div className="section-header">
+        <h2>Winnaars</h2>
+        <button className="btn-icon" onClick={load}><Icons.refresh /></button>
+      </div>
+
+      <div className="winners-summary">
+        <div className="ws-card">
+          <div className="ws-num">{totalPrizes}</div>
+          <div className="ws-label">Prijzen weggegeven</div>
+        </div>
+        <div className="ws-card">
+          <div className="ws-num">{totalWinners}</div>
+          <div className="ws-label">Unieke winnaars</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="result-section-label">📢 Totaal-bericht naar de groep</div>
+        <div className="announce-hint">Gebruik <code>{"{total}"}</code> voor het aantal prijzen en <code>{"{winners_count}"}</code> voor het aantal winnaars.</div>
+        <textarea className="input" rows={5} value={msg} onChange={e => setMsg(e.target.value)} />
+        {sent ? (
+          <div className="announce-confirm">✅ Verstuurd naar de groep!</div>
+        ) : (
+          <button className="btn-primary" style={{marginTop:"8px"}} onClick={() => setPreview(true)} disabled={!msg.trim()}>
+            <Icons.send /> Voorbeeld & versturen
+          </button>
+        )}
+      </div>
+
+      {loading ? <div className="loading">Laden...</div> : (
+        <div className="card">
+          <div className="card-header"><h3>🏆 Ranglijst — meeste prijzen</h3></div>
+          {winners.length === 0 ? (
+            <div className="empty">Nog geen winnaars geregistreerd. Winnaars verschijnen hier zodra je ze kiest bij predicties, quizzes of feedback.</div>
+          ) : (
+            <table className="data-table">
+              <thead><tr><th>#</th><th>Winnaar</th><th>Bybit UID</th><th>Keer gewonnen</th></tr></thead>
+              <tbody>
+                {winners.map((w, i) => (
+                  <tr key={w.user_id}>
+                    <td>{["🥇","🥈","🥉"][i] || (i+1)}</td>
+                    <td><strong>{w.username ? "@"+w.username : w.first_name || ("ID "+w.user_id)}</strong></td>
+                    <td><span className="uid-cell has-uid">{w.uid || "—"}</span></td>
+                    <td><span className="win-count-badge">{w.win_count}×</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      <TelegramPreview
+        open={preview}
+        title="Voorbeeld totaal-bericht"
+        text={previewText()}
+        note="Wordt direct in de groep geplaatst"
+        confirmLabel="Versturen"
+        sending={sending}
+        onConfirm={sendTotal}
+        onCancel={() => setPreview(false)}
+      />
+    </div>
+  );
+}
+
 const TABS = [
   { id: "overview",     label: "Overzicht",      icon: Icons.chart      },
   { id: "calendar",     label: "Content Kalender", icon: Icons.calendar },
   { id: "predictions",  label: "Predicties",     icon: Icons.prediction },
   { id: "leaderboard",  label: "Activiteit",     icon: Icons.trophy     },
+  { id: "winners",      label: "Winnaars",       icon: Icons.trophy     },
   { id: "feedback",     label: "Feedback",       icon: Icons.message    },
   { id: "users",        label: "Gebruikers",     icon: Icons.users      },
   { id: "chatlog",      label: "Chat Log",       icon: Icons.server     },
@@ -2654,6 +2844,7 @@ export default function App() {
         {activeTab === "overview"    && <OverviewTab />}
         {activeTab === "predictions" && <PredictionsTab />}
         {activeTab === "leaderboard" && <LeaderboardTab />}
+        {activeTab === "winners"     && <WinnersTab />}
         {activeTab === "feedback"    && <FeedbackTab />}
         {activeTab === "users"       && <UsersTab />}
         {activeTab === "calendar"    && <CalendarTab />}
