@@ -1081,3 +1081,10 @@ textarea.input { resize: vertical; min-height: 80px; }
 /* ── Winner answer input row ─────────────────────────────────────── */
 .winner-answer-row { display: flex; flex-direction: column; gap: 8px; }
 .winner-value-input { width: 100%; }
+
+/* ── Winners tab ─────────────────────────────────────────────────── */
+.winners-summary { display: flex; gap: 12px; margin-bottom: 16px; }
+.ws-card { flex: 1; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; text-align: center; }
+.ws-num { font-size: 32px; font-weight: 800; color: var(--yellow); line-height: 1; }
+.ws-label { font-size: 12px; color: var(--text-3); margin-top: 6px; }
+.win-count-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; background: var(--yellow-dim); color: var(--yellow); font-weight: 700; font-size: 13px; }
