@@ -626,10 +626,11 @@ function PredictionsTab() {
     // Auto-fill announcement text with winners
     const q = predictions.find(p => p.id === reveal.qId);
     const answer = r.correct?.replace("#","").toUpperCase();
+    const prize = q?.prize ? ` Je wint *${q.prize}*!` : "";
     let txt = `🎯 *Uitslag!*\n\nDe vraag was: "${q?.question || ""}"\nHet juiste antwoord: *${answer}*\n\n`;
     if (r.winners?.length) {
       // Use {winner} for the first winner so the bot makes a clean, escaped mention
-      txt += `🏆 *Winnaar:* {winner}\n`;
+      txt += `🏆 *Winnaar:* {winner}${prize}\n`;
       if (r.winners.length > 1) {
         txt += `\nOok goed:\n`;
         r.winners.slice(1).forEach((w, i) => {
@@ -686,9 +687,10 @@ function PredictionsTab() {
     setAnnounceSent(false);
 
     const q = predictions.find(p => p.id === reveal.qId);
+    const prize = q?.prize ? ` Je wint *${q.prize}*!` : "";
     let txt = `🔢 *Uitslag!*\n\nDe vraag was: "${q?.question || ""}"\nHet juiste antwoord: *${r.correctValue}*\n\n`;
     if (r.winners?.length) {
-      txt += `🏆 *Winnaar:* {winner}\nMet een gok van ${r.winners[0].guess_value} (${r.winners[0].diff} ernaast)\n\n`;
+      txt += `🏆 *Winnaar:* {winner}${prize}\nMet een gok van ${r.winners[0].guess_value} (${r.winners[0].diff} ernaast)\n\n`;
       if (r.winners.length > 1) {
         txt += `Eervolle vermeldingen:\n`;
         r.winners.slice(1).forEach((w,i) => {
