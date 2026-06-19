@@ -1991,6 +1991,12 @@ function CalendarTab() {
   }
 
   const selectedDayEvents = selectedDay ? events.filter(e => e.event_date === selectedDay) : [];
+  // All this month's events sorted by scheduled time (for the timeline panel)
+  const upcomingEvents = [...events].sort((a, b) => {
+    const ta = a.scheduled_time ? new Date(a.scheduled_time).getTime() : new Date(a.event_date).getTime();
+    const tb = b.scheduled_time ? new Date(b.scheduled_time).getTime() : new Date(b.event_date).getTime();
+    return ta - tb;
+  });
 
   return (
     <div className="tab-content">
@@ -2003,7 +2009,7 @@ function CalendarTab() {
         </div>
       </div>
 
-      <div className={`cal-layout ${selectedDay ? "with-panel" : ""}`}>
+      <div className="cal-layout with-panel">
         {/* Calendar grid */}
         {loading ? <div className="loading">Laden...</div> : (
           <div className="calendar-grid">
@@ -2147,6 +2153,55 @@ function CalendarTab() {
                   <Icons.send /> Nu plaatsen
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Upcoming schedule timeline — shown when no specific day is selected */}
+        {!selectedDay && !loading && (
+          <div className="cal-panel">
+            <div className="cal-panel-header">
+              <div>
+                <div className="cal-panel-date">📅 Ingepland deze maand</div>
+                <div className="cal-panel-sub">Op volgorde van tijd</div>
+              </div>
+            </div>
+            <div className="cal-timeline">
+              {upcomingEvents.length === 0 ? (
+                <div className="empty">Nog niets ingepland deze maand. Klik op een dag om iets toe te voegen.</div>
+              ) : (
+                upcomingEvents.map(ev => {
+                  const d = ev.scheduled_time ? new Date(ev.scheduled_time) : null;
+                  const status = ev.closed ? "done" : ev.question_sent ? "live" : "planned";
+                  return (
+                    <div key={ev.id} className={`tl-item ${status}`}>
+                      <div className="tl-when">
+                        <span className="tl-date">{d ? d.toLocaleDateString("nl-NL",{day:"numeric",month:"short"}) : "—"}</span>
+                        <span className="tl-time">{d ? d.toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"}) : ""}</span>
+                      </div>
+                      <div className={`tl-line ${status}`} />
+                      <div className="tl-body">
+                        <div className="tl-top">
+                          <span className="tl-type">{ev.event_type === "prediction" ? "📊 Predictie" : "🎯 Quiz"}</span>
+                          <span className={`chi-status ${status}`}>
+                            {ev.closed ? "Afgerond" : ev.question_sent ? "LIVE" : "Gepland"}
+                          </span>
+                        </div>
+                        <div className="tl-q">{ev.question}</div>
+                        <div className="chi-meta">
+                          {ev.prize_amount && <span className="chi-prize">💰 {ev.prize_amount} {ev.prize_currency}</span>}
+                          {ev.closed && ev.winner_username && <span className="chi-winner">🏆 {ev.winner_username}</span>}
+                        </div>
+                        <div className="chi-actions">
+                          {ev.question_sent && !ev.closed && <button className="btn-xs btn-primary" onClick={() => openWinner(ev)}>Winnaar kiezen</button>}
+                          {!ev.question_sent && !ev.closed && <button className="btn-xs btn-primary" onClick={() => openEdit(ev)}>✏️ Bewerk</button>}
+                          {!ev.closed && <button className="btn-xs" onClick={() => deleteEvent(ev.id)}>Verwijder</button>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         )}
